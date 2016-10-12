@@ -28,11 +28,9 @@ if __name__ == '__main__':
     sample_task = {
         'task_id': '1',
         'dataset_path': 's3://',
+        'output_path': 's3://',
         'model_type': SampleModel.TYPE,
         'model_config': model_config,
-        'output_path': 's3://',
-        'training_params': {
-        },
     }
 
     handle_task(sample_task)
