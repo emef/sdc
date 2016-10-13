@@ -248,10 +248,11 @@ def prepare_dataset(
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
 
-    prepare_dataset(
-        'https://s3-us-west-1.amazonaws.com/sdc-datasets/sdc_dataset_1.tar.gz',
-        '/tmp/sdc_processed_1',
-        's3://sdc-matt/datasets/sdc_processed_1')
+    if False:
+        prepare_dataset(
+            'https://s3-us-west-1.amazonaws.com/sdc-datasets/sdc_dataset_1.tar.gz',
+            '/tmp/sdc_processed_1',
+            's3://sdc-matt/datasets/sdc_processed_1')
 
     dataset = load_dataset('s3://sdc-matt/datasets/sdc_processed_1')
     training_generator = dataset.training_generator()
