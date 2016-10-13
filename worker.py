@@ -27,10 +27,10 @@ def handle_task(task):
 
     # TODO: clean up compilation/training config into task config
     batch_size = 100
-    validation_size = 200
+    validation_size = 500
     epoch_size = 1000
-    epochs = 25
-    lrate = 0.01
+    epochs = 5
+    lrate = 0.001
     decay = lrate/epochs
     sgd = SGD(lr=lrate, momentum=0.9, decay=decay, nesterov=False)
 
@@ -39,27 +39,31 @@ def handle_task(task):
         optimizer=sgd,
         metrics=['mse'])
 
-    print(model.tf_model.summary())
+    print model.tf_model.summary()
 
     history = model.tf_model.fit_generator(
         dataset.training_generator(batch_size),
         validation_data=dataset.validation_generator(batch_size),
         samples_per_epoch=epoch_size,
         nb_val_samples=validation_size,
-        nb_epoch=25,
+        nb_epoch=epochs,
         verbose=1,
         callbacks=[],
         pickle_safe=True,
         nb_worker=2)
 
-
-    loss_and_metrics = model.tf_model.evaluate_generator(
+    _, mse = model.tf_model.evaluate_generator(
         dataset.testing_generator(batch_size),
         dataset.get_testing_size(),
         nb_worker=2,
         pickle_safe=True)
 
-    print("mse: %.6f" % (loss_and_metrics[1]))
+    example_images, example_labels = dataset.sequential_generator(50).next()
+    predictions = model.tf_model.predict_on_batch(example_images)
+    for pred, label in zip(predictions, example_labels):
+        print 'p=%.5f  l=%.5f' % (pred, label)
+
+    print "testing mse: %.6f" % mse
 
 
 if __name__ == '__main__':

@@ -66,9 +66,7 @@ class SampleModel(object):
         model.add(Dense(
             output_dim=1,
             init='glorot_uniform',
-            activation='relu',
-            bias=True,
-            W_regularizer=l2(0.1)))
+            W_regularizer=l2(0.01)))
 
         # Upload the model to designated path
         upload_model(model, model_uri)

@@ -1,7 +1,7 @@
 """
 Loading/saving datasets.
 """
-import logging, os, shutil, subprocess
+import logging, os, shutil, subprocess, traceback
 
 import numpy as np
 import requests
@@ -47,55 +47,64 @@ class Dataset(object):
         return len(self.validation_indexes)
 
     def training_generator(self, batch_size):
-        return InfiniteImageLoadingGenerator(
-            batch_size,
-            self.training_indexes,
-            self.labels,
-            self.images_base_path,
-            self.image_file_fmt)
+        return self.get_generator(batch_size, self.training_indexes, True)
 
     def testing_generator(self, batch_size):
-        return InfiniteImageLoadingGenerator(
-            batch_size,
-            self.testing_indexes,
-            self.labels,
-            self.images_base_path,
-            self.image_file_fmt)
+        return self.get_generator(batch_size, self.testing_indexes, True)
 
     def validation_generator(self, batch_size):
+        return self.get_generator(batch_size, self.validation_indexes, True)
+
+    def sequential_generator(self, batch_size):
+        max_index = np.max([
+            self.training_indexes.max(),
+            self.testing_indexes.max(),
+            self.validation_indexes.max()])
+
+        # generate a sequential list of all indexes
+        indexes = np.arange(1, max_index + 1)
+
+        # don't shuffle indexes on each pass to maintain order
+        return self.get_generator(batch_size, indexes, False)
+
+    def get_generator(self, batch_size, indexes, shuffle_on_exhaust):
         return InfiniteImageLoadingGenerator(
             batch_size,
-            self.validation_indexes,
+            indexes,
             self.labels,
             self.images_base_path,
-            self.image_file_fmt)
+            self.image_file_fmt,
+            shuffle_on_exhaust=shuffle_on_exhaust)
 
 
 class InfiniteImageLoadingGenerator(object):
     """
-    Iterable object which loads the next (image, label) tuple in
-    the data set.
+    Iterable object which loads the next batch of (image, label) tuples
+    in the data set.
     """
     def __init__(self,
                  batch_size,
                  indexes,
                  labels,
                  images_base_path,
-                 image_file_fmt):
+                 image_file_fmt,
+                 shuffle_on_exhaust):
         """
         @param batch_size - number of images to generate per batch
         @param indexes - array (N,) of image index IDs
-        @param labels - array (N,) of corresponding labels
+        @param labels - array (M,) of all labels
         @param images_base_path - local path to image directory
         @param image_file_fmt - format string for image filenames
+        @param shuffle_on_exhaust - shuffle data on each full pass
         """
         self.batch_size = batch_size
-        self.current_index = 1
         self.indexes = indexes
         self.labels = labels
         self.images_base_path = images_base_path
         self.image_file_fmt = image_file_fmt
+        self.shuffle_on_exhaust = shuffle_on_exhaust
 
+        self.current_index = 1
         self.image_shape = list(self.load_image(self.indexes[0]).shape)
         self.label_shape = ([1] if len(self.labels.shape) == 1
                             else list(self.labels.shape[1:]))
@@ -121,20 +130,33 @@ class InfiniteImageLoadingGenerator(object):
         images = np.empty([self.batch_size] + self.image_shape)
         labels = np.empty([self.batch_size] + self.label_shape)
 
-        for i in xrange(self.batch_size):
-            next_index = self.indexes[self.current_index]
+        try:
+            for i in xrange(self.batch_size):
+                next_index = self.indexes[self.current_index]
 
-            image = self.load_image(self.current_index)
-            label = self.labels[self.current_index]
+                if next_index == 0:
+                    print i, self.current_index
 
-            images[i] = image
-            labels[i] = label
+                image = self.load_image(next_index)
+                label = self.labels[next_index]
 
-            max_index = len(self.indexes) - 1
-            self.current_index = 1 + ((self.current_index + 1) % max_index)
+                images[i] = image
+                labels[i] = label
+
+                if self.current_index == len(self.indexes) - 1:
+                    self.current_index = 1
+
+                    if self.shuffle_on_exhaust:
+                        # each full pass over data is a random permutation
+                        np.random.shuffle(self.indexes)
+                else:
+                    self.current_index += 1
+
+        except Exception as e:
+            print e
+            traceback.print_exc()
 
         return (images, labels)
-
 
 
 def load_dataset(s3_uri, cache_dir='/tmp'):
@@ -168,6 +190,7 @@ def load_dataset(s3_uri, cache_dir='/tmp'):
 
     # Load the dataset from the local directory
     labels = np.load(os.path.join(dataset_path, 'labels.npy'))
+
     training_indexes = np.load(
         os.path.join(dataset_path, 'training_indexes.npy'))
     testing_indexes = np.load(
@@ -250,7 +273,7 @@ def prepare_dataset(
     logger.info('%d samples in testing set', n_testing)
     logger.info('%d samples in validation set', n_validation)
 
-    indexes = np.arange(0, n_samples)
+    indexes = np.arange(1, n_samples + 1)
     np.random.shuffle(indexes)
 
     training_indexes = indexes[:n_training]
@@ -289,7 +312,7 @@ if __name__ == '__main__':
             's3://sdc-matt/datasets/sdc_processed_1')
 
     dataset = load_dataset('s3://sdc-matt/datasets/sdc_processed_1')
-    training_generator = dataset.training_generator()
+    training_generator = dataset.training_generator(1)
     img, label = training_generator.next()
 
     print img.max()
