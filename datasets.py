@@ -160,6 +160,17 @@ def prepare_dataset(
         testing_percent=0.2,
         validation_percent=0.1,
         cache_dir='/tmp'):
+    """
+    Prepare dataset from nishanth's preprocessed format.
+
+    @param archive_url - url to download dataset archive from
+    @param local_output_path - where to write prepared dataset locally
+    @param output_s3_uri - where to write prepared dataset in s3
+    @param training_percent - percent of samples used in training set
+    @param testing_percent - percent of samples used in testing set
+    @param validation_percent - percent of samples used in validation set
+    @param cache_dir - where to store intermediate archives
+    """
     filename = archive_url.split('/')[-1]
     archive_path = os.path.join(cache_dir, filename)
     local_raw_path = os.path.join(cache_dir, filename.split('.')[0])
