@@ -46,22 +46,25 @@ class Dataset(object):
     def get_validation_size(self):
         return len(self.validation_indexes)
 
-    def training_generator(self):
+    def training_generator(self, batch_size):
         return InfiniteImageLoadingGenerator(
+            batch_size,
             self.training_indexes,
             self.labels,
             self.images_base_path,
             self.image_file_fmt)
 
-    def testing_generator(self):
+    def testing_generator(self, batch_size):
         return InfiniteImageLoadingGenerator(
+            batch_size,
             self.testing_indexes,
             self.labels,
             self.images_base_path,
             self.image_file_fmt)
 
-    def validation_generator(self):
+    def validation_generator(self, batch_size):
         return InfiniteImageLoadingGenerator(
+            batch_size,
             self.validation_indexes,
             self.labels,
             self.images_base_path,
@@ -73,35 +76,66 @@ class InfiniteImageLoadingGenerator(object):
     Iterable object which loads the next (image, label) tuple in
     the data set.
     """
-    def __init__(self, indexes, labels, images_base_path, image_file_fmt):
+    def __init__(self,
+                 batch_size,
+                 indexes,
+                 labels,
+                 images_base_path,
+                 image_file_fmt):
         """
+        @param batch_size - number of images to generate per batch
         @param indexes - array (N,) of image index IDs
         @param labels - array (N,) of corresponding labels
-        @param images_base_path - local path to directory containing images
-        @param image_file_fmt - format string (of image ID) for image filename
+        @param images_base_path - local path to image directory
+        @param image_file_fmt - format string for image filenames
         """
-        self.current_index = 0
+        self.batch_size = batch_size
+        self.current_index = 1
         self.indexes = indexes
         self.labels = labels
         self.images_base_path = images_base_path
         self.image_file_fmt = image_file_fmt
 
+        self.image_shape = list(self.load_image(self.indexes[0]).shape)
+        self.label_shape = ([1] if len(self.labels.shape) == 1
+                            else list(self.labels.shape[1:]))
+
     def __iter__(self):
         return self
 
-    def next(self):
-        next_index = self.indexes[self.current_index]
+    def load_image(self, index):
+        """
+        Load image from disk.
+
+        @param index - image index
+        @return - 3d image numpy array
+        """
         image_path = os.path.join(
             self.images_base_path,
-            self.image_file_fmt % next_index)
+            self.image_file_fmt % index)
 
         image = np.load(image_path)
-        label = self.labels[self.current_index]
+        return ((image-(255.0/2))/255.0)
 
-        max_index = len(self.labels)
-        self.current_index = (self.current_index + 1) % max_index
+    def next(self):
+        images = np.empty([self.batch_size] + self.image_shape)
+        labels = np.empty([self.batch_size] + self.label_shape)
 
-        return (image, label)
+        for i in xrange(self.batch_size):
+            next_index = self.indexes[self.current_index]
+
+            image = self.load_image(self.current_index)
+            label = self.labels[self.current_index]
+
+            images[i] = image
+            labels[i] = label
+
+            max_index = len(self.indexes) - 1
+            self.current_index = 1 + ((self.current_index + 1) % max_index)
+
+        return (images, labels)
+
+
 
 def load_dataset(s3_uri, cache_dir='/tmp'):
     """

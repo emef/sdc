@@ -1,7 +1,7 @@
 """
 Creating tensorflow models.
 """
-import logging, os, tempfile
+import logging, os
 
 from keras.layers import Dense
 from keras.layers import Dropout
@@ -24,14 +24,15 @@ class SampleModel(object):
 
     def __init__(self, model_config):
         self.model_config = model_config
-        self.tf_model = download_model(model_config['model_path'])
+        self.tf_model = download_model(model_config['model_uri'])
+
 
     @classmethod
-    def create(cls, model_path):
+    def create(cls, model_uri):
         """
         Create and upload an untrained sample model.
 
-        @param model_path - path to upload tf model to in s3.
+        @param model_uri - path to upload tf model to in s3.
         @return - model_config dict compatible with SampleModel.
         """
         # fix random seed for reproducibility
@@ -41,10 +42,10 @@ class SampleModel(object):
         # Create the model
         model = Sequential()
         model.add(Convolution2D(
-            nb_filter=32,
-            nb_row=3,
-            nb_col=3,
-            input_shape=(3, 160, 160),
+            nb_filter=1,
+            nb_row=5,
+            nb_col=5,
+            input_shape=(80, 80, 3),
             init= "glorot_uniform",
             activation='relu',
             border_mode='same',
@@ -53,10 +54,10 @@ class SampleModel(object):
             subsample=(1,1)))
 
         model.add(Dropout(0.5))
-        model.add(MaxPooling2D(pool_size=(3, 3)))
+        model.add(MaxPooling2D(pool_size=(5, 5)))
         model.add(Flatten())
         model.add(Dense(
-            output_dim=1231,
+            output_dim=1024,
             init='glorot_uniform',
             activation='relu',
             bias=True,
@@ -70,10 +71,10 @@ class SampleModel(object):
             W_regularizer=l2(0.1)))
 
         # Upload the model to designated path
-        upload_model(model, model_path)
+        upload_model(model, model_uri)
 
         # Return model_config params compatible with constructor
-        return {'model_path': model_path}
+        return {'model_uri': model_uri}
 
 
 MODEL_CLASS_BY_TYPE = {
@@ -93,20 +94,19 @@ def load_from_config(model_type, model_config):
     return MODEL_CLASS_BY_TYPE[model_type](model_config)
 
 
-def upload_model(model, s3_uri):
+def upload_model(model, s3_uri, cache_dir='/tmp'):
     """
     Upload a keras model to s3.
 
     @param model - keras model
     @param s3_uri - formatted s3://bucket/key/path
+    @param cache_dir - where to store cached models
     """
-    _, tmp_path = tempfile.mkstemp()
-    try:
-        logger.info("Uploading model to " + s3_uri)
-        model.save(tmp_path)
-        upload_file(tmp_path, s3_uri)
-    finally:
-        os.remove(tmp_path)
+    _, key = parse_s3_uri(s3_uri)
+    model_path = os.path.join(cache_dir, key)
+    logger.info("Uploading model to %s", s3_uri)
+    model.save(model_path)
+    upload_file(model_path, s3_uri)
 
 
 def download_model(s3_uri, skip_cache=False, cache_dir='/tmp'):

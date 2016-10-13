@@ -2,11 +2,11 @@
 ```
 {
   task_id: "identifier",
-  dataset_path: "/path/to/dataset",
-  output_path: "/path/to/write/to",
+  dataset_uri: "/path/to/dataset",
+  output_uri: "/path/to/write/to",
   model_type: "sample",
   model_config: {
-    model_path: "/path/to/model",
+    model_uri: "/path/to/model",
   },
 }
 ```
