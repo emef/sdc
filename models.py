@@ -76,20 +76,28 @@ class SampleModel(object):
         return {'model_path': model_path}
 
 
-_MODEL_CLASS_BY_TYPE = {
+MODEL_CLASS_BY_TYPE = {
     SampleModel.TYPE: SampleModel
 }
 
 
 def load_from_config(model_type, model_config):
-    return _MODEL_CLASS_BY_TYPE[model_type](model_config)
+    """
+    Loads a model from config by looking up it's model type and
+    calling the right constructor.
+
+    @param model_type - model type ID, should be in MODEL_CLASS_BY_TYPE.
+    @param model_config - appropriate model_config dict for model type
+    @return - model object
+    """
+    return MODEL_CLASS_BY_TYPE[model_type](model_config)
 
 
 def upload_model(model, s3_uri):
     """
     Upload a keras model to s3.
 
-    @param model - keras model.
+    @param model - keras model
     @param s3_uri - formatted s3://bucket/key/path
     """
     _, tmp_path = tempfile.mkstemp()
