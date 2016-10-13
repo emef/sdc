@@ -38,24 +38,57 @@ class Dataset(object):
         self.image_file_fmt = image_file_fmt
 
     def get_training_size(self):
+        """
+        @return - number of training samples
+        """
         return len(self.training_indexes)
 
     def get_testing_size(self):
+        """
+        @return - number of testing samples
+        """
         return len(self.testing_indexes)
 
     def get_validation_size(self):
+        """
+        @return - number of validation samples
+        """
         return len(self.validation_indexes)
 
     def training_generator(self, batch_size):
+        """
+        Generator over training samples.
+
+        @param batch_size - images per batch
+        @return - generator returning (images, labels) batches
+        """
         return self.get_generator(batch_size, self.training_indexes, True)
 
     def testing_generator(self, batch_size):
+        """
+        Generator over testing samples.
+
+        @param batch_size - images per batch
+        @return - generator returning (images, labels) batches
+        """
         return self.get_generator(batch_size, self.testing_indexes, True)
 
     def validation_generator(self, batch_size):
+        """
+        Generator over validation samples.
+
+        @param batch_size - images per batch
+        @return - generator returning (images, labels) batches
+        """
         return self.get_generator(batch_size, self.validation_indexes, True)
 
     def sequential_generator(self, batch_size):
+        """
+        Generator which iterates over each image in sequential order.
+
+        @param batch_size - images per batch
+        @return - generator returning (images, labels) batches
+        """
         max_index = np.max([
             self.training_indexes.max(),
             self.testing_indexes.max(),
@@ -68,6 +101,14 @@ class Dataset(object):
         return self.get_generator(batch_size, indexes, False)
 
     def get_generator(self, batch_size, indexes, shuffle_on_exhaust):
+        """
+        Helper to get an infinite image loading generator.
+
+        @param batch_size - images per batch
+        @param indexes - 1d array of indexes to include in dataset
+        @param shuffle_on_exhaust - should shuffle data on each full pass
+        @return - generator returning (images, labels) batches
+        """
         return InfiniteImageLoadingGenerator(
             batch_size,
             indexes,
@@ -95,7 +136,7 @@ class InfiniteImageLoadingGenerator(object):
         @param labels - array (M,) of all labels
         @param images_base_path - local path to image directory
         @param image_file_fmt - format string for image filenames
-        @param shuffle_on_exhaust - shuffle data on each full pass
+        @param shuffle_on_exhaust - should shuffle data on each full pass
         """
         self.batch_size = batch_size
         self.indexes = indexes
@@ -130,31 +171,26 @@ class InfiniteImageLoadingGenerator(object):
         images = np.empty([self.batch_size] + self.image_shape)
         labels = np.empty([self.batch_size] + self.label_shape)
 
-        try:
-            for i in xrange(self.batch_size):
-                next_index = self.indexes[self.current_index]
+        for i in xrange(self.batch_size):
+            next_index = self.indexes[self.current_index]
 
-                if next_index == 0:
-                    print i, self.current_index
+            if next_index == 0:
+                print i, self.current_index
 
-                image = self.load_image(next_index)
-                label = self.labels[next_index]
+            image = self.load_image(next_index)
+            label = self.labels[next_index]
 
-                images[i] = image
-                labels[i] = label
+            images[i] = image
+            labels[i] = label
 
-                if self.current_index == len(self.indexes) - 1:
-                    self.current_index = 1
+            if self.current_index == len(self.indexes) - 1:
+                self.current_index = 1
 
-                    if self.shuffle_on_exhaust:
-                        # each full pass over data is a random permutation
-                        np.random.shuffle(self.indexes)
-                else:
-                    self.current_index += 1
-
-        except Exception as e:
-            print e
-            traceback.print_exc()
+                if self.shuffle_on_exhaust:
+                    # each full pass over data is a random permutation
+                    np.random.shuffle(self.indexes)
+            else:
+                self.current_index += 1
 
         return (images, labels)
 
