@@ -129,7 +129,9 @@ class InfiniteImageLoadingGenerator(object):
                  labels,
                  images_base_path,
                  image_file_fmt,
-                 shuffle_on_exhaust):
+                 shuffle_on_exhaust,
+                 timesteps=0,
+                 transform_model=None):
         """
         @param batch_size - number of images to generate per batch
         @param indexes - array (N,) of image index IDs
@@ -137,6 +139,8 @@ class InfiniteImageLoadingGenerator(object):
         @param images_base_path - local path to image directory
         @param image_file_fmt - format string for image filenames
         @param shuffle_on_exhaust - should shuffle data on each full pass
+        @param timesteps - appends this many previous labels to end of samples
+        @param transform_model - tensorflow model to transform images
         """
         self.batch_size = batch_size
         self.indexes = indexes
@@ -144,47 +148,75 @@ class InfiniteImageLoadingGenerator(object):
         self.images_base_path = images_base_path
         self.image_file_fmt = image_file_fmt
         self.shuffle_on_exhaust = shuffle_on_exhaust
+        self.timesteps = timesteps
+        self.transform_model = transform_model
 
-        self.current_index = 1
+        # can't have timesteps > 0 and no transform_model
+        assert timesteps == 0 or transform_model is not None
+
+        self.current_index = 0
         self.image_shape = list(self.load_image(self.indexes[0]).shape)
         self.label_shape = ([1] if len(self.labels.shape) == 1
                             else list(self.labels.shape[1:]))
+
+    def with_transform(self, transform_model, timesteps=0):
+        """
+        Add a model transform and optionally label timesteps.
+
+        @param transform_model - tensorflow model to transform images
+        @param timesteps - number of previous labels to append to samples
+        @return - image-loading iterator with transform/stepsize
+        """
+        return InfiniteImageLoadingGenerator(
+            batch_size=self.batch_size,
+            indexes=self.indexes,
+            labels=self.labels,
+            images_base_path=self.images_base_path,
+            image_file_fmt=self.image_file_fmt,
+            shuffle_on_exhaust=self.shuffle_on_exhaust,
+            timesteps=timesteps,
+            transform_model=transform_model)
 
     def __iter__(self):
         return self
 
     def load_image(self, index):
         """
-        Load image from disk.
+        Load image at index.
 
-        @param index - image index
+        @param index - index of image
         @return - 3d image numpy array
         """
-        image_path = os.path.join(
-            self.images_base_path,
-            self.image_file_fmt % index)
-
-        image = np.load(image_path)
-        return ((image-(255.0/2))/255.0)
+        return load_image(
+            index, self.images_base_path, self.image_file_fmt)
 
     def next(self):
-        images = np.empty([self.batch_size] + self.image_shape)
+        default_prev = -0.0506 # TODO: better default
+        samples = np.empty([self.batch_size] + self.image_shape)
         labels = np.empty([self.batch_size] + self.label_shape)
+        steps = np.empty((self.batch_size, self.timesteps))
 
         for i in xrange(self.batch_size):
-            next_index = self.indexes[self.current_index]
+            next_image_index = self.indexes[self.current_index]
 
-            if next_index == 0:
-                print i, self.current_index
+            # image indexes are 1-indexed
+            next_label_index = next_image_index - 1
 
-            image = self.load_image(next_index)
-            label = self.labels[next_index]
+            image = self.load_image(next_image_index)
+            label = self.labels[next_label_index]
 
-            images[i] = image
+            samples[i] = image
             labels[i] = label
 
+            for step in xrange(self.timesteps):
+                step_index = next_label_index - step - 1
+                prev = (self.labels[step_index]
+                        if 0 <= step_index <= next_label_index
+                        else default_prev)
+                steps[i, step] = prev
+
             if self.current_index == len(self.indexes) - 1:
-                self.current_index = 1
+                self.current_index = 0
 
                 if self.shuffle_on_exhaust:
                     # each full pass over data is a random permutation
@@ -192,7 +224,27 @@ class InfiniteImageLoadingGenerator(object):
             else:
                 self.current_index += 1
 
-        return (images, labels)
+        if self.transform_model is not None:
+            samples = self.transform_model.predict_on_batch(samples)
+
+        if self.timesteps > 0:
+            samples = np.concatenate((samples, steps), axis=1)
+
+        return (samples, labels)
+
+
+def load_image(index, images_base_path, image_file_fmt):
+    """
+    Load image from disk.
+
+    @param index - image index
+    @param images_base_path - base images path
+    @param image_file_fmt - image file fmt string
+    @return - 3d image numpy array
+    """
+    image_path = os.path.join(images_base_path, image_file_fmt % index)
+    image = np.load(image_path)
+    return ((image-(255.0/2))/255.0)
 
 
 def load_dataset(s3_uri, cache_dir='/tmp'):
@@ -346,9 +398,3 @@ if __name__ == '__main__':
             'https://s3-us-west-1.amazonaws.com/sdc-datasets/sdc_dataset_1.tar.gz',
             '/tmp/sdc_processed_1',
             's3://sdc-matt/datasets/sdc_processed_1')
-
-    dataset = load_dataset('s3://sdc-matt/datasets/sdc_processed_1')
-    training_generator = dataset.training_generator(1)
-    img, label = training_generator.next()
-
-    print img.max()

@@ -1,6 +1,3 @@
-from eventlet import *
-patcher.monkey_patch(all=True)
-
 import logging, os, subprocess, sys, tempfile, time
 from boto.s3.bucket import Bucket
 from boto.s3.connection import S3Connection
@@ -87,28 +84,7 @@ def download_dir(s3_uri, local_path):
     if archived_dir_exists(s3_uri):
         return download_archived_dir(s3_uri, local_path)
 
-    s3_bucket, s3_prefix = parse_s3_uri(s3_uri)
-    logger.info("Downloading recursively s3 directory %s to %s",
-                s3_uri, local_path)
-
-    conn = S3Connection(*aws_credentials())
-    bucket = Bucket(connection=conn, name=s3_bucket)
-    bucket_list = bucket.list(prefix=s3_prefix)
-    pool = GreenPool(size=20)
-
-    for key in bucket_list:
-        key_path = key.key.split(s3_prefix)[-1][1:]
-        out_path = os.path.join(local_path, key_path)
-
-        # make sure the path exists
-        try: os.makedirs(os.path.dirname(out_path))
-        except: pass
-
-        pool.spawn_n(download_file, s3_bucket, key.key, out_path)
-
-    pool.waitall()
-
-    logger.info("Done downloading " + s3_prefix)
+    raise NotImplemented
 
 def get_archive_s3_uri(s3_uri):
     """

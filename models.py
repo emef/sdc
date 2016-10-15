@@ -1,13 +1,11 @@
 """
 Creating tensorflow models.
 """
-import logging, os
+import logging, os, tempfile
 
-from keras.layers import Dense
-from keras.layers import Dropout
-from keras.layers import Flatten
-from keras.layers.convolutional import Convolution2D
-from keras.layers.convolutional import MaxPooling2D
+from keras.engine.topology import Merge
+from keras.layers import Dense, Dropout, Flatten
+from keras.layers.convolutional import Convolution2D, MaxPooling2D
 from keras.models import Sequential
 from keras.models import load_model as keras_load_model
 from keras.optimizers import SGD
@@ -51,16 +49,28 @@ class BaseModel(object):
         """
         raise NotImplemented
 
+    def as_encoder(self):
+        """
+        Transform this model into an encoder model.
 
-class SampleModel(BaseModel):
-    TYPE = 'sample'
+        @return - tensorflow model
+        """
+        raise NotImplemented
+
+    def output_dim(self):
+        """
+        @return - output dimension
+        """
+        raise NotImplemented
+
+
+class SimpleModel(BaseModel):
+    TYPE = 'simple'
 
     def __init__(self, model_config):
-        self.model_config = model_config
-        self.model = download_model(model_config['model_uri'])
+        self.model = load_model_from_uri(model_config['model_uri'])
 
     def fit(self, dataset, training_args):
-        # TODO: clean up compilation/training config into task config
         batch_size = training_args.get('batch_size', 100)
         validation_size = training_args.get('validation_size', 500)
         epoch_size = training_args.get('epoch_size', 1000)
@@ -89,9 +99,18 @@ class SampleModel(BaseModel):
 
         return evaluation
 
-
     def predict_on_batch(self, batch):
         return self.model.predict_on_batch(batch)
+
+    def as_encoder(self):
+        # remove the last output layers to retain the feature maps
+        deep_copy = deep_copy_model(self.model)
+        deep_copy.pop()
+        deep_copy.pop()
+        return deep_copy
+
+    def output_dim(self):
+        return get_output_dim(self.model)
 
     @classmethod
     def create(cls,
@@ -101,19 +120,15 @@ class SampleModel(BaseModel):
                momentum=0.9,
                metrics=None):
         """
-        Create and upload an untrained sample model.
+        Create and upload an untrained simple model.
 
         @param model_uri - path to upload tf model to in s3.
-        @return - model_config dict compatible with SampleModel.
+        @return - model_config dict compatible with SimpleModel.
         """
         metrics = metrics or ['mse']
         sgd = SGD(lr=learning_rate,
                   momentum=momentum,
                   nesterov=False)
-
-        # fix random seed for reproducibility
-        seed = 7
-        numpy.random.seed(seed)
 
         # Create the model
         model = Sequential()
@@ -128,7 +143,6 @@ class SampleModel(BaseModel):
             W_regularizer=l2(0.01),
             bias=True,
             subsample=(1,1)))
-
         model.add(Dropout(0.5))
         model.add(MaxPooling2D(pool_size=(5, 5)))
         model.add(Flatten())
@@ -144,32 +158,147 @@ class SampleModel(BaseModel):
             init='glorot_uniform',
             W_regularizer=l2(0.01)))
 
-        model.compile(
-            loss=loss,
-            optimizer=sgd,
-            metrics=metrics)
+        model.compile(loss=loss, optimizer=sgd, metrics=metrics)
 
         # Upload the model to designated path
         upload_model(model, model_uri)
 
         # Return model_config params compatible with constructor
-        return {'model_uri': model_uri}
+        return {
+            'type': SimpleModel.TYPE,
+            'model_uri': model_uri
+        }
+
+
+class EnsembleModel(BaseModel):
+    """
+    """
+    TYPE = 'ensemble'
+
+    def __init__(self, model_config):
+        self.input_model = load_from_config(
+            model_config['input_model_config'])
+
+        self.model = load_model_from_uri(
+            model_config['model_uri'])
+
+        self.timesteps = model_config['timesteps']
+
+    def fit(self, dataset, training_args):
+        batch_size = training_args.get('batch_size', 100)
+        validation_size = training_args.get('validation_size', 500)
+        epoch_size = training_args.get('epoch_size', 1000)
+        epochs = training_args.get('epochs', 5)
+
+        self.model.summary()
+
+        batch, _ = (dataset
+            .training_generator(batch_size)
+            .next())
+
+        # NOTE: for some reason if I don't call this then everything breaks
+        # TODO: why?
+        self.input_model.predict_on_batch(batch)
+
+        training_generator = (dataset
+            .training_generator(batch_size)
+            .with_transform(self.input_model, self.timesteps))
+
+        validation_generator = (dataset
+            .validation_generator(batch_size)
+            .with_transform(self.input_model, self.timesteps))
+
+        # NOTE: can't use fit with parallel loading or it locks up
+        # TODO: why?
+        history = self.model.fit_generator(
+            training_generator,
+            validation_data=validation_generator,
+            samples_per_epoch=epoch_size,
+            nb_val_samples=validation_size,
+            nb_epoch=epochs,
+            verbose=1,
+            callbacks=[])
+
+    def evaluate(self, dataset):
+        testing_size = min(dataset.get_testing_size() / 10, 100)
+        testing_generator = (dataset
+            .testing_generator(testing_size)
+            .with_transform(self.input_model, self.timesteps))
+
+        evaluation = self.model.evaluate_generator(
+            testing_generator, testing_size)
+
+        return evaluation
+
+
+    def predict_on_batch(self, batch):
+        pass
+
+    @classmethod
+    def create(cls,
+               model_uri,
+               input_model_config,
+               timesteps=3,
+               layers=None,
+               loss='mean_squared_error',
+               learning_rate=0.001,
+               momentum=0.9,
+               W_l2=0.1,
+               metrics=None):
+
+        input_model = load_from_config(input_model_config)
+        input_dim = input_model.output_dim() + timesteps
+        layers = [input_dim] + (layers or [128, ])
+        metrics = metrics or ['mse']
+        sgd = SGD(lr=learning_rate,
+                  momentum=momentum,
+                  nesterov=False)
+
+        model = Sequential()
+        for input_dim, output_dim in zip(layers, layers[1:]):
+            model.add(Dense(
+                input_dim=input_dim,
+                output_dim=output_dim,
+                activation='relu',
+                init='glorot_uniform',
+                W_regularizer=l2(W_l2)))
+            model.add(Dropout(0.5))
+
+        model.add(Dense(
+            output_dim=1,
+            init='glorot_uniform',
+            W_regularizer=l2(W_l2)))
+
+        model.compile(loss=loss, optimizer=sgd, metrics=metrics)
+
+        # Upload the model to designated path
+        upload_model(model, model_uri)
+
+        return {
+            'type': EnsembleModel.TYPE,
+            'timesteps': timesteps,
+            'model_uri': model_uri,
+            'input_model_config': input_model_config,
+        }
 
 
 MODEL_CLASS_BY_TYPE = {
-    SampleModel.TYPE: SampleModel
+    SimpleModel.TYPE: SimpleModel,
+    EnsembleModel.TYPE: EnsembleModel,
 }
 
 
-def load_from_config(model_type, model_config):
+def load_from_config(model_config):
     """
     Loads a model from config by looking up it's model type and
     calling the right constructor.
 
-    @param model_type - model type ID, should be in MODEL_CLASS_BY_TYPE.
+    NOTE: Requires model_config to have 'type' key.
+
     @param model_config - appropriate model_config dict for model type
     @return - model object
     """
+    model_type = model_config['type']
     return MODEL_CLASS_BY_TYPE[model_type](model_config)
 
 
@@ -188,9 +317,9 @@ def upload_model(model, s3_uri, cache_dir='/tmp'):
     upload_file(model_path, s3_uri)
 
 
-def download_model(s3_uri, skip_cache=False, cache_dir='/tmp'):
+def load_model_from_uri(s3_uri, skip_cache=False, cache_dir='/tmp'):
     """
-    Download and deserialize a keras model.
+    Download, deserialize, and load a keras model into memory.
 
     @param s3_uri - formatted s3://bucket/key/path
     @param skip_cache - skip local file cache
@@ -205,3 +334,32 @@ def download_model(s3_uri, skip_cache=False, cache_dir='/tmp'):
         download_file(bucket, key, model_path)
 
     return keras_load_model(model_path)
+
+
+def deep_copy_model(model):
+    """
+    Create a deep copy of a tensorflow model.
+
+    @param model - tensorflow model
+    @return - copy of model
+    """
+    _, tmp_path = tempfile.mkstemp()
+    try:
+        model.save(tmp_path)
+        return keras_load_model(tmp_path)
+    finally:
+        os.remove(tmp_path)
+
+
+def get_output_dim(model):
+    """
+    Infer output dimension from model by inspecting its layers.
+
+    @param model - tensorflow model
+    @return - output dimension
+    """
+    for layer in reversed(model.layers):
+        if hasattr(layer, 'output_dim'):
+            return layer.output_dim
+
+    raise ValueError('Could not infer output dim')
