@@ -55,6 +55,24 @@ class Dataset(object):
         """
         return len(self.validation_indexes)
 
+    def get_training_labels(self):
+        """
+        @return - numpy array of labels for training set
+        """
+        return self.labels[self.training_indexes - 1]
+
+    def get_testing_labels(self):
+        """
+        @return - numpy array of labels for testing set
+        """
+        return self.labels[self.testing_indexes - 1]
+
+    def get_validation_labels(self):
+        """
+        @return - numpy array of labels for validation set
+        """
+        return self.labels[self.validation_indexes - 1]
+
     def training_generator(self, batch_size):
         """
         Generator over training samples.
@@ -131,6 +149,8 @@ class InfiniteImageLoadingGenerator(object):
                  image_file_fmt,
                  shuffle_on_exhaust,
                  timesteps=0,
+                 timestep_noise=0,
+                 timestep_dropout=0,
                  transform_model=None):
         """
         @param batch_size - number of images to generate per batch
@@ -140,6 +160,8 @@ class InfiniteImageLoadingGenerator(object):
         @param image_file_fmt - format string for image filenames
         @param shuffle_on_exhaust - should shuffle data on each full pass
         @param timesteps - appends this many previous labels to end of samples
+        @param timestep_noise - +/- random noise factor
+        @param timestep_dropout - % change to drop a prev label
         @param transform_model - tensorflow model to transform images
         """
         self.batch_size = batch_size
@@ -149,6 +171,8 @@ class InfiniteImageLoadingGenerator(object):
         self.image_file_fmt = image_file_fmt
         self.shuffle_on_exhaust = shuffle_on_exhaust
         self.timesteps = timesteps
+        self.timestep_noise = timestep_noise
+        self.timestep_dropout = timestep_dropout
         self.transform_model = transform_model
 
         # can't have timesteps > 0 and no transform_model
@@ -159,12 +183,18 @@ class InfiniteImageLoadingGenerator(object):
         self.label_shape = ([1] if len(self.labels.shape) == 1
                             else list(self.labels.shape[1:]))
 
-    def with_transform(self, transform_model, timesteps=0):
+    def with_transform(self,
+                       transform_model,
+                       timesteps=0,
+                       timestep_noise=0,
+                       timestep_dropout=0):
         """
         Add a model transform and optionally label timesteps.
 
         @param transform_model - tensorflow model to transform images
         @param timesteps - number of previous labels to append to samples
+        @param timestep_noise - random noise factor to apply to prev labels
+        @param timestep_dropout - percent chance prev label gets set to 0
         @return - image-loading iterator with transform/stepsize
         """
         return InfiniteImageLoadingGenerator(
@@ -175,6 +205,8 @@ class InfiniteImageLoadingGenerator(object):
             image_file_fmt=self.image_file_fmt,
             shuffle_on_exhaust=self.shuffle_on_exhaust,
             timesteps=timesteps,
+            timestep_noise=timestep_noise,
+            timestep_dropout=timestep_dropout,
             transform_model=transform_model)
 
     def __iter__(self):
@@ -228,7 +260,12 @@ class InfiniteImageLoadingGenerator(object):
             samples = self.transform_model.predict_on_batch(samples)
 
         if self.timesteps > 0:
+            steps += np.random.randn(*steps.shape) * self.timestep_noise
+            steps *= (
+                1 - (np.random.rand(*steps.shape) < self.timestep_dropout)
+            ).astype(int)
             samples = np.concatenate((samples, steps), axis=1)
+
 
         return (samples, labels)
 
