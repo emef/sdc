@@ -134,6 +134,9 @@ class SimpleModel(BaseModel):
     @classmethod
     def create(cls,
                model_uri,
+               input_shape,
+               conv_layers=None,
+               dense_layers=None,
                loss='mean_squared_error',
                learning_rate=0.001,
                momentum=0.9,
@@ -151,30 +154,69 @@ class SimpleModel(BaseModel):
 
         # Create the model
         model = Sequential()
-        model.add(Convolution2D(20, 5, 5,
-            input_shape=(80, 80, 3),
-            init= "glorot_uniform",
-            activation='relu',
-            border_mode='same',
-            W_regularizer=l2(0.01),
-            bias=True))
-        model.add(MaxPooling2D(pool_size=(5, 5), strides=(2, 2)))
-        model.add(Convolution2D(50, 5, 5,
-            init= "glorot_uniform",
-            activation='relu',
-            border_mode='same',
-            W_regularizer=l2(0.01),
-            bias=True))
-        model.add(MaxPooling2D(pool_size=(5, 5), strides=(2, 2)))
+        model.add(Convolution2D(24, 5, 5,
+                    input_shape=(200, 66, 3),
+                    init= "glorot_uniform",
+                    activation='relu',
+                    border_mode='same',
+                    W_regularizer=l2(0.01),
+                    bias=True))
+        model.add(MaxPooling2D(pool_size=(2, 2)))
+        model.add(Convolution2D(36, 5, 5,
+                    init= "glorot_uniform",
+                    activation='relu',
+                    border_mode='same',
+                    W_regularizer=l2(0.01),
+                    bias=True))
+        model.add(MaxPooling2D(pool_size=(2, 2)))
+        model.add(Convolution2D(48, 5, 5,
+                    init= "glorot_uniform",
+                    activation='relu',
+                    border_mode='same',
+                    W_regularizer=l2(0.01),
+                    bias=True))
+        model.add(MaxPooling2D(pool_size=(2, 2)))
+        model.add(Convolution2D(64, 3, 3,
+                    init= "glorot_uniform",
+                    activation='relu',
+                    border_mode='same',
+                    W_regularizer=l2(0.01),
+                    bias=True))
+        model.add(MaxPooling2D(pool_size=(2, 2)))
+        model.add(Convolution2D(64, 3, 3,
+                    init= "glorot_uniform",
+                    activation='relu',
+                    border_mode='same',
+                    W_regularizer=l2(0.01),
+                    bias=True))
+        model.add(MaxPooling2D(pool_size=(1, 3)))
         model.add(Flatten())
         model.add(Dropout(0.5))
         model.add(Dense(
-            output_dim=128,
+            output_dim=1024,
             init='glorot_uniform',
             activation='relu',
             bias=True,
             W_regularizer=l2(0.1)))
         model.add(Dropout(0.5))
+        model.add(Dense(
+            output_dim=100,
+            init='glorot_uniform',
+            activation='relu',
+            bias=True,
+            W_regularizer=l2(0.1)))
+        model.add(Dense(
+            output_dim=50,
+            init='glorot_uniform',
+            activation='relu',
+            bias=True,
+            W_regularizer=l2(0.1)))
+        model.add(Dense(
+            output_dim=10,
+            init='glorot_uniform',
+            activation='relu',
+            bias=True,
+            W_regularizer=l2(0.1)))
         model.add(Dense(
             output_dim=1,
             init='glorot_uniform',

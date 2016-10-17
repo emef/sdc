@@ -37,6 +37,12 @@ class Dataset(object):
         self.validation_indexes = validation_indexes
         self.image_file_fmt = image_file_fmt
 
+    def get_image_shape(self):
+        """
+        @return - image dimensions shape
+        """
+        return self.load_image(self.training_indexes[0]).shape
+
     def get_training_size(self):
         """
         @return - number of training samples
