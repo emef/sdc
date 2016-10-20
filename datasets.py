@@ -21,7 +21,8 @@ class Dataset(object):
                  training_indexes,
                  testing_indexes,
                  validation_indexes,
-                 image_file_fmt='%d.png.npy'):
+                 image_file_fmt='%d.png.npy',
+                 leftright=False):
         """
         @param images_base_path - path to image files
         @param labels - 2d array of all label data
@@ -29,13 +30,34 @@ class Dataset(object):
         @param testing_indexes - 1d array of testing indexes
         @param validation_indexes - 1d array of validation indexes
         @param image_file_fmt - format string for image file names
+        @param leftright - if True, transform labels to int(y > 0)
         """
-        self.images_base_path = images_base_path
-        self.labels = labels
         self.training_indexes = training_indexes
         self.testing_indexes = testing_indexes
         self.validation_indexes = validation_indexes
+        self.images_base_path = images_base_path
         self.image_file_fmt = image_file_fmt
+
+        # If leftright transform, set labels = (labels > 0)
+        if leftright:
+            labels = (labels > 0).astype('float64')
+
+        self.labels = labels
+
+    def as_leftright(self):
+        """
+        Return this dataset as a leftright-transformed dataset.
+
+        @return - this dataset with leftright=True
+        """
+        return Dataset(
+            self.images_base_path,
+            self.labels,
+            self.training_indexes,
+            self.testing_indexes,
+            self.validation_indexes,
+            self.image_file_fmt,
+            True)
 
     def get_image_shape(self):
         """
@@ -334,13 +356,20 @@ def load_dataset(s3_uri, cache_dir='/tmp'):
 
     images_base_path = os.path.join(dataset_path, 'images')
 
+    # hack png vs jpg; DWIM
+    try:
+        load_image(1, images_base_path, '%d.png.npy')
+        image_file_fmt = '%d.png.npy'
+    except:
+        image_file_fmt = '%d.jpg.npy'
+
     return Dataset(
         images_base_path=images_base_path,
         labels=labels,
         training_indexes=training_indexes,
         testing_indexes=testing_indexes,
         validation_indexes=validation_indexes,
-        image_file_fmt='%d.jpg.npy')
+        image_file_fmt=image_file_fmt)
 
 
 def prepare_dataset(

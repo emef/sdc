@@ -4,6 +4,10 @@ model, validates it, and writes the results to the db.
 """
 import logging
 
+from keras.backend import binary_crossentropy
+import numpy as np
+import tensorflow as tf
+
 from models import (
     load_from_config, upload_model, EnsembleModel, SimpleModel)
 from datasets import load_dataset
@@ -18,6 +22,7 @@ def handle_task(task):
     logger.info('loading model with config %s', task['model_config'])
     model = load_from_config(task['model_config'])
     dataset = load_dataset(task['dataset_uri'])
+    print get_baseline_crossentropy(dataset)
 
     model.fit(dataset, task['training_args'])
     output_config = model.save(task['task_id'])
@@ -53,10 +58,41 @@ def get_baseline_mse(dataset):
     return mse
 
 
+def get_baseline_crossentropy(dataset):
+    """
+    Get the baseline binary cross entry for a leftright dataset using
+    dummy predictor.
+
+    @param - Dataset
+    @return - cross entropy of dummy predictor.
+    """
+    dataset = dataset.as_leftright()
+    prior = dataset.get_training_labels().mean()
+    y_true = dataset.get_testing_labels()
+    y_pred = np.ones(y_true.shape) * prior
+    cross_entropy = binary_crossentropy(
+        tf.convert_to_tensor(y_pred),
+        tf.convert_to_tensor(y_true))
+
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
 
     if True:
+        sample_task = {
+            'task_id': 'simple-1',
+            'dataset_uri': 's3://sdc-matt/datasets/sdc_processed_1',
+            'output_uri': 's3://',
+            'model_config': SimpleModel.create_leftright(
+                's3://sdc-matt/leftright-1.h5',
+                learning_rate=0.0001,
+                input_shape=(80, 80, 3)),
+            'training_args': {
+                'batch_size': 1024,
+                'epochs': 200,
+            },
+        }
+
+    if False:
         sample_task = {
             'task_id': 'simple-1',
             'dataset_uri': 's3://sdc-nalapati/datasets/sdc_processed_5',
@@ -69,6 +105,7 @@ if __name__ == '__main__':
                 'epochs': 200,
             },
         }
+
 
     if False:
         input_model_config = {

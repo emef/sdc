@@ -79,15 +79,18 @@ class SimpleModel(BaseModel):
 
     def __init__(self, model_config):
         self.model = load_model_from_uri(model_config['model_uri'])
+        self.leftright = model_config.get('leftright', False)
 
     def fit(self, dataset, training_args):
+        if self.leftright:
+            dataset = dataset.as_leftright()
+
         batch_size = training_args.get('batch_size', 100)
         epoch_size = training_args.get(
             'epoch_size', dataset.get_training_size())
         validation_size = training_args.get(
             'validation_size', dataset.get_validation_size())
         epochs = training_args.get('epochs', 5)
-
 
         self.model.summary()
 
@@ -103,6 +106,9 @@ class SimpleModel(BaseModel):
             nb_worker=2)
 
     def evaluate(self, dataset):
+        if self.leftright:
+            dataset = dataset.as_leftright()
+
         n_testing = dataset.get_testing_size()
         evaluation = self.model.evaluate_generator(
             dataset.testing_generator(16),
@@ -158,7 +164,6 @@ class SimpleModel(BaseModel):
             border_mode='same',
             W_regularizer=l2(0.01),
             bias=True))
-
         model.add(MaxPooling2D(pool_size=(5, 5), strides=(2, 2)))
         model.add(Convolution2D(50, 5, 5,
             init= "glorot_uniform",
@@ -190,6 +195,59 @@ class SimpleModel(BaseModel):
         return {
             'type': SimpleModel.TYPE,
             'model_uri': model_uri
+        }
+
+    @classmethod
+    def create_leftright(cls,
+                         model_uri,
+                         input_shape=(66, 200, 3),
+                         learning_rate=0.0001):
+        """
+        """
+        model = Sequential()
+        model.add(Convolution2D(20, 5, 5,
+            input_shape=input_shape,
+            init= "glorot_uniform",
+            activation='relu',
+            border_mode='same',
+            W_regularizer=l2(0.01),
+            bias=True))
+        model.add(MaxPooling2D(pool_size=(5, 5), strides=(2, 2)))
+        model.add(Convolution2D(50, 5, 5,
+            init= "glorot_uniform",
+            activation='relu',
+            border_mode='same',
+            W_regularizer=l2(0.01),
+            bias=True))
+        model.add(MaxPooling2D(pool_size=(5, 5), strides=(2, 2)))
+        model.add(Flatten())
+        model.add(Dropout(0.5))
+        model.add(Dense(
+            output_dim=128,
+            init='glorot_uniform',
+            activation='relu',
+            bias=True,
+            W_regularizer=l2(0.1)))
+        model.add(Dropout(0.5))
+        model.add(Dense(
+            output_dim=1,
+            init='glorot_uniform',
+            W_regularizer=l2(0.01),
+            activation='sigmoid'))
+
+	model.compile(
+            loss='binary_crossentropy',
+            optimizer='adam',
+            metrics=['accuracy', 'binary_crossentropy'])
+
+        # Upload the model to designated path
+        upload_model(model, model_uri)
+
+        # Return model_config params compatible with constructor
+        return {
+            'type': SimpleModel.TYPE,
+            'model_uri': model_uri,
+            'leftright': True,
         }
 
     @classmethod
