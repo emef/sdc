@@ -61,7 +61,7 @@ if __name__ == '__main__':
             'task_id': 'simple-1',
             'dataset_uri': 's3://sdc-nalapati/datasets/sdc_processed_5',
             'output_uri': 's3://',
-            'model_config': SimpleModel.create(
+            'model_config': SimpleModel.create_basic(
                 's3://sdc-matt/tmp.h5',
                 learning_rate=0.0001),
             'training_args': {

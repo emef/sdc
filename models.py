@@ -135,14 +135,70 @@ class SimpleModel(BaseModel):
         }
 
     @classmethod
-    def create(cls,
-               model_uri,
-               conv_layers=None,
-               dense_layers=None,
-               loss='mean_squared_error',
-               learning_rate=0.001,
-               momentum=0.9,
-               metrics=None):
+    def create_basic(cls,
+                     model_uri,
+                     input_shape=(66, 200, 3),
+                     loss='mean_squared_error',
+                     learning_rate=0.001,
+                     momentum=0.9,
+                     metrics=None):
+        """
+        """
+        metrics = metrics or ['mse']
+        sgd = SGD(lr=learning_rate,
+                  momentum=momentum,
+                  nesterov=False)
+
+        # Create the model
+        model = Sequential()
+        model.add(Convolution2D(20, 5, 5,
+            input_shape=input_shape,
+            init= "glorot_uniform",
+            activation='relu',
+            border_mode='same',
+            W_regularizer=l2(0.01),
+            bias=True))
+
+        model.add(MaxPooling2D(pool_size=(5, 5), strides=(2, 2)))
+        model.add(Convolution2D(50, 5, 5,
+            init= "glorot_uniform",
+            activation='relu',
+            border_mode='same',
+            W_regularizer=l2(0.01),
+            bias=True))
+        model.add(MaxPooling2D(pool_size=(5, 5), strides=(2, 2)))
+        model.add(Flatten())
+        model.add(Dropout(0.5))
+        model.add(Dense(
+            output_dim=128,
+            init='glorot_uniform',
+            activation='relu',
+            bias=True,
+            W_regularizer=l2(0.1)))
+        model.add(Dropout(0.5))
+        model.add(Dense(
+            output_dim=1,
+            init='glorot_uniform',
+            W_regularizer=l2(0.01)))
+
+        model.compile(loss=loss, optimizer=sgd, metrics=metrics)
+
+        # Upload the model to designated path
+        upload_model(model, model_uri)
+
+        # Return model_config params compatible with constructor
+        return {
+            'type': SimpleModel.TYPE,
+            'model_uri': model_uri
+        }
+
+    @classmethod
+    def create_nvidia(cls,
+                      model_uri,
+                      loss='mean_squared_error',
+                      learning_rate=0.001,
+                      momentum=0.9,
+                      metrics=None):
         """
         Create and upload an untrained simple model.
 
