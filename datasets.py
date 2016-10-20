@@ -322,12 +322,15 @@ def load_dataset(s3_uri, cache_dir='/tmp'):
     # Load the dataset from the local directory
     labels = np.load(os.path.join(dataset_path, 'labels.npy'))
 
-    training_indexes = np.load(
-        os.path.join(dataset_path, 'training_indexes.npy'))
-    testing_indexes = np.load(
-        os.path.join(dataset_path, 'testing_indexes.npy'))
-    validation_indexes = np.load(
-        os.path.join(dataset_path, 'validation_indexes.npy'))
+    training_indexes = (np
+        .load(os.path.join(dataset_path, 'training_indexes.npy'))
+        .astype(int))
+    testing_indexes = (np
+        .load(os.path.join(dataset_path, 'testing_indexes.npy'))
+        .astype(int))
+    validation_indexes = (np
+        .load(os.path.join(dataset_path, 'validation_indexes.npy'))
+        .astype(int))
 
     images_base_path = os.path.join(dataset_path, 'images')
 
@@ -337,7 +340,7 @@ def load_dataset(s3_uri, cache_dir='/tmp'):
         training_indexes=training_indexes,
         testing_indexes=testing_indexes,
         validation_indexes=validation_indexes,
-        image_file_fmt='%d.png.npy')
+        image_file_fmt='%d.jpg.npy')
 
 
 def prepare_dataset(

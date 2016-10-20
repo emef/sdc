@@ -82,9 +82,12 @@ class SimpleModel(BaseModel):
 
     def fit(self, dataset, training_args):
         batch_size = training_args.get('batch_size', 100)
-        validation_size = training_args.get('validation_size', 500)
-        epoch_size = training_args.get('epoch_size', 1000)
+        epoch_size = training_args.get(
+            'epoch_size', dataset.get_training_size())
+        validation_size = training_args.get(
+            'validation_size', dataset.get_validation_size())
         epochs = training_args.get('epochs', 5)
+
 
         self.model.summary()
 
@@ -134,7 +137,6 @@ class SimpleModel(BaseModel):
     @classmethod
     def create(cls,
                model_uri,
-               input_shape,
                conv_layers=None,
                dense_layers=None,
                loss='mean_squared_error',
@@ -155,7 +157,7 @@ class SimpleModel(BaseModel):
         # Create the model
         model = Sequential()
         model.add(Convolution2D(24, 5, 5,
-                    input_shape=(200, 66, 3),
+                    input_shape=(66, 200, 3),
                     init= "glorot_uniform",
                     activation='relu',
                     border_mode='same',
@@ -189,7 +191,7 @@ class SimpleModel(BaseModel):
                     border_mode='same',
                     W_regularizer=l2(0.01),
                     bias=True))
-        model.add(MaxPooling2D(pool_size=(1, 3)))
+        model.add(MaxPooling2D(pool_size=(3, 1)))
         model.add(Flatten())
         model.add(Dropout(0.5))
         model.add(Dense(
@@ -253,9 +255,11 @@ class EnsembleModel(BaseModel):
         self.timestep_dropout = model_config['timestep_dropout']
 
     def fit(self, dataset, training_args):
+        validation_size = training_args.get(
+            'validation_size', dataset.get_validation_size())
+        epoch_size = training_args.get(
+            'epoch_size', dataset.get_training_size())
         batch_size = training_args.get('batch_size', 100)
-        validation_size = training_args.get('validation_size', 500)
-        epoch_size = training_args.get('epoch_size', 1000)
         epochs = training_args.get('epochs', 5)
 
         input_model = self.input_model

@@ -56,21 +56,21 @@ def get_baseline_mse(dataset):
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
 
-    if False:
+    if True:
         sample_task = {
             'task_id': 'simple-1',
-            'dataset_uri': 's3://sdc-matt/datasets/sdc_processed_1',
+            'dataset_uri': 's3://sdc-nalapati/datasets/sdc_processed_5',
             'output_uri': 's3://',
-            'model_config': SimpleModel.create('s3://sdc-matt/tmp.h5'),
+            'model_config': SimpleModel.create(
+                's3://sdc-matt/tmp.h5',
+                learning_rate=0.0001),
             'training_args': {
-                'batch_size': 16,
-                'validation_size': 512,
-                'epoch_size': 1024,
-                'epochs': 20,
+                'batch_size': 1024,
+                'epochs': 200,
             },
         }
 
-    if True:
+    if False:
         input_model_config = {
             'type': SimpleModel.TYPE,
             'model_uri': 's3://sdc-matt/simple/simple-1/model.h5',
@@ -85,7 +85,7 @@ if __name__ == '__main__':
 
         sample_task = {
             'task_id': 'ensemble-1',
-            'dataset_uri': 's3://sdc-matt/datasets/sdc_processed_1',
+            'dataset_uri': 's3://sdc-nalapati/datasets/sdc_processed_5',
             'output_uri': 's3://',
             'model_config': ensemble_model_config,
             'training_args': {
