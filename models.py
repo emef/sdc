@@ -101,9 +101,7 @@ class SimpleModel(BaseModel):
             nb_val_samples=validation_size,
             nb_epoch=epochs,
             verbose=1,
-            callbacks=[],
-            pickle_safe=True,
-            nb_worker=2)
+            callbacks=[])
 
     def evaluate(self, dataset):
         if self.leftright:
