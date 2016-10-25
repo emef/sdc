@@ -2,7 +2,7 @@
 This is the worker process which reads from the task queue, trains the
 model, validates it, and writes the results to the db.
 """
-import logging
+import logging, time
 
 from keras.backend import binary_crossentropy
 import numpy as np
@@ -70,7 +70,7 @@ def get_baseline_crossentropy(dataset):
     prior = dataset.get_training_labels().mean()
     y_true = dataset.get_testing_labels()
     y_pred = np.ones(y_true.shape) * prior
-    cross_entropy = binary_crossentropy(
+    return binary_crossentropy(
         tf.convert_to_tensor(y_pred),
         tf.convert_to_tensor(y_true))
 
@@ -78,17 +78,18 @@ if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
 
     if True:
+        task_id = 'leftright-2.%s' % int(time.time())
         sample_task = {
-            'task_id': 'simple-1',
-            'dataset_uri': 's3://sdc-matt/datasets/sdc_processed_1',
+            'task_id': task_id,
+            'dataset_uri': 's3://sdc-matt/datasets/elcamino_trip2',
             'output_uri': 's3://',
             'model_config': SimpleModel.create_leftright(
-                's3://sdc-matt/leftright-1.h5',
-                learning_rate=0.0001,
-                input_shape=(80, 80, 3)),
+                's3://sdc-matt/tmp/' + task_id,
+                learning_rate=0.01,
+                input_shape=(160, 160, 3)),
             'training_args': {
-                'batch_size': 1024,
-                'epochs': 200,
+                'batch_size': 32,
+                'epochs': 100,
             },
         }
 

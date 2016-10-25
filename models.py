@@ -147,10 +147,9 @@ class SimpleModel(BaseModel):
                      loss='mean_squared_error',
                      learning_rate=0.001,
                      momentum=0.9,
-                     metrics=None):
+                     W_l2=0.001):
         """
         """
-        metrics = metrics or ['mse']
         sgd = SGD(lr=learning_rate,
                   momentum=momentum,
                   nesterov=False)
@@ -162,31 +161,28 @@ class SimpleModel(BaseModel):
             init= "glorot_uniform",
             activation='relu',
             border_mode='same',
-            W_regularizer=l2(0.01),
             bias=True))
-        model.add(MaxPooling2D(pool_size=(5, 5), strides=(2, 2)))
+        model.add(MaxPooling2D(pool_size=(5, 5)))
         model.add(Convolution2D(50, 5, 5,
             init= "glorot_uniform",
             activation='relu',
             border_mode='same',
-            W_regularizer=l2(0.01),
             bias=True))
-        model.add(MaxPooling2D(pool_size=(5, 5), strides=(2, 2)))
+        model.add(MaxPooling2D(pool_size=(5, 5)))
         model.add(Flatten())
         model.add(Dropout(0.5))
         model.add(Dense(
             output_dim=128,
             init='glorot_uniform',
             activation='relu',
-            bias=True,
-            W_regularizer=l2(0.1)))
+            bias=True))
         model.add(Dropout(0.5))
         model.add(Dense(
             output_dim=1,
             init='glorot_uniform',
-            W_regularizer=l2(0.01)))
+            W_regularizer=l2(W_l2)))
 
-        model.compile(loss=loss, optimizer=sgd, metrics=metrics)
+        model.compile(loss=loss, optimizer=sgd)
 
         # Upload the model to designated path
         upload_model(model, model_uri)
@@ -201,7 +197,8 @@ class SimpleModel(BaseModel):
     def create_leftright(cls,
                          model_uri,
                          input_shape=(66, 200, 3),
-                         learning_rate=0.0001):
+                         learning_rate=0.0001,
+                         W_l2=0.0001):
         """
         """
         model = Sequential()
@@ -210,35 +207,32 @@ class SimpleModel(BaseModel):
             init= "glorot_uniform",
             activation='relu',
             border_mode='same',
-            W_regularizer=l2(0.01),
             bias=True))
-        model.add(MaxPooling2D(pool_size=(5, 5), strides=(2, 2)))
+        model.add(MaxPooling2D(pool_size=(5, 5)))
         model.add(Convolution2D(50, 5, 5,
             init= "glorot_uniform",
             activation='relu',
             border_mode='same',
-            W_regularizer=l2(0.01),
             bias=True))
-        model.add(MaxPooling2D(pool_size=(5, 5), strides=(2, 2)))
+        model.add(MaxPooling2D(pool_size=(5, 5)))
         model.add(Flatten())
         model.add(Dropout(0.5))
         model.add(Dense(
             output_dim=128,
             init='glorot_uniform',
             activation='relu',
-            bias=True,
-            W_regularizer=l2(0.1)))
+            bias=True))
         model.add(Dropout(0.5))
         model.add(Dense(
             output_dim=1,
             init='glorot_uniform',
-            W_regularizer=l2(0.01),
+            W_regularizer=l2(W_l2),
             activation='sigmoid'))
 
 	model.compile(
             loss='binary_crossentropy',
-            optimizer='adam',
-            metrics=['accuracy', 'binary_crossentropy'])
+            optimizer=SGD(lr=learning_rate, momentum=0.9),
+            metrics=['accuracy'])
 
         # Upload the model to designated path
         upload_model(model, model_uri)

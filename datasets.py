@@ -413,7 +413,7 @@ def prepare_dataset(
         try: os.makedirs(local_raw_path)
         except: pass
 
-        subprocess.call(['tar', 'xzf', archive_path, '-C', local_raw_path])
+        subprocess.call(['tar', 'xf', archive_path, '-C', local_raw_path])
 
     dir_list = list(os.listdir(local_raw_path))
     assert len(dir_list) == 2
