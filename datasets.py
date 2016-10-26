@@ -250,6 +250,26 @@ class InfiniteImageLoadingGenerator(object):
         return load_image(
             index, self.images_base_path, self.image_file_fmt)
 
+    def skip(self, n):
+        """
+        Skip n indexes in the generator.
+        """
+        self.incr_index(n)
+
+    def incr_index(self, n=1):
+        """
+        Increment the current index, wrapping around and possibly
+        shuffling the dataset on EOF
+        """
+        if self.current_index + n == len(self.indexes):
+            self.current_index = 0
+
+            if self.shuffle_on_exhaust:
+                # each full pass over data is a random permutation
+                np.random.shuffle(self.indexes)
+        else:
+            self.current_index += n
+
     def next(self):
         default_prev = -0.0506 # TODO: better default
         samples = np.empty([self.batch_size] + self.image_shape)
@@ -275,14 +295,7 @@ class InfiniteImageLoadingGenerator(object):
                         else default_prev)
                 steps[i, step] = prev
 
-            if self.current_index == len(self.indexes) - 1:
-                self.current_index = 0
-
-                if self.shuffle_on_exhaust:
-                    # each full pass over data is a random permutation
-                    np.random.shuffle(self.indexes)
-            else:
-                self.current_index += 1
+            self.incr_index()
 
         if self.transform_model is not None:
             samples = self.transform_model.predict_on_batch(samples)

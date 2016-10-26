@@ -37,11 +37,19 @@ def handle_task(task):
     logger.info('Baseline MSE %.5f, training MSE %.5f, improvement %.2f%%',
                 baseline_mse, training_mse, improvement * 100)
 
-    # print out some sample prediction/label pairs
-    example_images, example_labels = dataset.sequential_generator(100).next()
-    predictions = model.predict_on_batch(example_images)
-    for pred, label in zip(predictions, example_labels):
-        logger.info('p=%.5f  l=%.5f', pred, label)
+    example_ranges = 10
+    range_size = 20
+    testing_size = dataset.get_testing_size()
+    for _ in xrange(example_ranges):
+        # print out some sample prediction/label pairs
+        example_images, example_labels = (dataset
+            .sequential_generator(range_size)
+            .skip(skip_to)
+            .next())
+
+        predictions = model.predict_on_batch(example_images)
+        for pred, label in zip(predictions, example_labels):
+            logger.info('p=%.5f  l=%.5f', pred, label)
 
     print 'output config = %s' % output_config
 
