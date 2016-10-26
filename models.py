@@ -194,7 +194,7 @@ class SimpleModel(BaseModel):
     @classmethod
     def create_leftright(cls,
                          model_uri,
-                         input_shape=(66, 200, 3),
+                         input_shape=(160, 160, 3),
                          learning_rate=0.0001,
                          W_l2=0.0001):
         """
@@ -202,17 +202,24 @@ class SimpleModel(BaseModel):
         model = Sequential()
         model.add(Convolution2D(20, 5, 5,
             input_shape=input_shape,
+            subsample=(2, 2),
             init= "glorot_uniform",
             activation='relu',
             border_mode='same',
             bias=True))
-        model.add(MaxPooling2D(pool_size=(5, 5)))
-        model.add(Convolution2D(50, 5, 5,
+        model.add(Convolution2D(50, 4, 4,
+            subsample=(2, 2),
             init= "glorot_uniform",
             activation='relu',
             border_mode='same',
             bias=True))
-        model.add(MaxPooling2D(pool_size=(5, 5)))
+        model.add(Convolution2D(50, 3, 3,
+            subsample=(2, 2),
+            init= "glorot_uniform",
+            activation='relu',
+            border_mode='same',
+            bias=True))
+        model.add(MaxPooling2D(pool_size=(2, 2)))
         model.add(Flatten())
         model.add(Dropout(0.5))
         model.add(Dense(
