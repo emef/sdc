@@ -77,8 +77,9 @@ def get_baseline_crossentropy(dataset):
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
 
-    if True:
-        task_id = 'leftright-2.%s' % int(time.time())
+    task_id = 'leftright-2.%s' % int(time.time())
+
+    if False:
         sample_task = {
             'task_id': task_id,
             'dataset_uri': 's3://sdc-matt/datasets/elcamino_trip2',
@@ -93,43 +94,26 @@ if __name__ == '__main__':
             },
         }
 
-    if False:
-        sample_task = {
-            'task_id': 'simple-1',
-            'dataset_uri': 's3://sdc-nalapati/datasets/sdc_processed_5',
-            'output_uri': 's3://',
-            'model_config': SimpleModel.create_basic(
-                's3://sdc-matt/tmp.h5',
-                learning_rate=0.0001),
-            'training_args': {
-                'batch_size': 1024,
-                'epochs': 200,
-            },
-        }
-
-
-    if False:
+    if True:
         input_model_config = {
-            'type': SimpleModel.TYPE,
-            'model_uri': 's3://sdc-matt/simple/simple-1/model.h5',
+            'model_uri': 's3://sdc-matt/simple/leftright-2.1477421619/model.h5',
+            'type': 'simple',
+            'leftright': True,
         }
 
         ensemble_model_config = EnsembleModel.create(
-            's3://sdc-matt/ensemble-model.h5',
+            's3://sdc-matt/tmp/' + task_id,
             input_model_config,
             timesteps=1,
             timestep_noise=0.2,
             timestep_dropout=0.5)
 
         sample_task = {
-            'task_id': 'ensemble-1',
-            'dataset_uri': 's3://sdc-nalapati/datasets/sdc_processed_5',
-            'output_uri': 's3://',
+            'task_id': task_id,
+            'dataset_uri': 's3://sdc-matt/datasets/elcamino_trip2',
             'model_config': ensemble_model_config,
             'training_args': {
-                'batch_size': 16,
-                'validation_size': 512,
-                'epoch_size': 1024,
+                'batch_size': 32,
                 'epochs': 20,
             },
         }
