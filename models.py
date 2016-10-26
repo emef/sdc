@@ -471,7 +471,7 @@ class EnsembleModel(BaseModel):
                loss='mean_squared_error',
                learning_rate=0.001,
                momentum=0.9,
-               W_l2=0.1,
+               W_l2=0.001,
                metrics=None):
 
         input_model = load_from_config(input_model_config).as_encoder()

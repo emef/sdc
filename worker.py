@@ -104,7 +104,7 @@ if __name__ == '__main__':
         ensemble_model_config = EnsembleModel.create(
             's3://sdc-matt/tmp/' + task_id,
             input_model_config,
-            timesteps=1,
+            timesteps=3,
             timestep_noise=0.2,
             timestep_dropout=0.5)
 
@@ -113,8 +113,8 @@ if __name__ == '__main__':
             'dataset_uri': 's3://sdc-matt/datasets/elcamino_trip2',
             'model_config': ensemble_model_config,
             'training_args': {
-                'batch_size': 32,
-                'epochs': 20,
+                'batch_size': 64,
+                'epochs': 10,
             },
         }
 
