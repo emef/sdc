@@ -410,42 +410,46 @@ class EnsembleModel(BaseModel):
             callbacks=[])
 
     def evaluate(self, dataset):
-        testing_size = min(dataset.get_testing_size() / 10, 100)
+        batch_size = 256
         testing_generator = (dataset
-            .testing_generator(testing_size)
+            .testing_generator(batch_size)
             .with_transform(self.input_model,
                             self.timesteps,
                             self.timestep_noise,
                             self.timestep_dropout))
 
-        evaluation = self.model.evaluate_generator(
+        return self.model.evaluate_generator(
             testing_generator, testing_size)
 
-        return evaluation
-
     def predict_on_batch(self, batch):
-        default_prev = 0
-        ensemble_input = self.input_model.predict_on_batch(batch)
+        transformed_batch = self.input_model.predict_on_batch(batch)
         if self.timesteps == 0:
-            return self.model.predict_on_batch(ensemble_input)
+            return self.model.predict_on_batch(transformed_batch)
         else:
-            input_dim = ensemble_input.shape[1] + self.timesteps
+            predictor = self.make_stateful_predictor()
             output_dim = get_output_dim(self.model)
-            assert output_dim == 1, 'only support single output dim'
-
             output = np.empty((len(batch), output_dim))
-            steps = deque([default_prev for _ in xrange(self.timesteps)])
 
             for i in xrange(len(batch)):
-                sample = (np
-                    .concatenate((ensemble_input[i], steps))
-                    .reshape((1, input_dim)))
-                prediction = self.model.predict([sample])[0, 0]
-                output[i] = prediction
-                steps.popleft()
-                steps.append(prediction)
+                output[i] = predictor(transformed_batch[i])
 
             return output
+
+    def make_stateful_predictor(self):
+        default_prev = 0
+        steps = deque([default_prev for _ in xrange(self.timesteps)])
+
+        def predict_fn(ensemble_features):
+            input_dim = len(ensemble_features) + self.timesteps
+            sample = (np
+                .concatenate((ensemble_features, steps))
+                .reshape((1, input_dim)))
+            prediction = self.model.predict([sample])[0, 0]
+            steps.popleft()
+            steps.append(prediction)
+            return prediction
+
+        return predict_fn
 
     def save(self, task_id):
         ensemble_s3_uri = 's3://sdc-matt/ensemble/%s/ensemble.h5' % task_id
