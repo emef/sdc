@@ -255,6 +255,7 @@ class InfiniteImageLoadingGenerator(object):
         Skip n indexes in the generator.
         """
         self.incr_index(n)
+        return self
 
     def incr_index(self, n=1):
         """

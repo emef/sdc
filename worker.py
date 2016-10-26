@@ -42,6 +42,7 @@ def handle_task(task):
     testing_size = dataset.get_testing_size()
     for _ in xrange(example_ranges):
         # print out some sample prediction/label pairs
+        skip_to = int(np.random.random() * (testing_size - range_size))
         example_images, example_labels = (dataset
             .sequential_generator(range_size)
             .skip(skip_to)
@@ -113,8 +114,8 @@ if __name__ == '__main__':
             's3://sdc-matt/tmp/' + task_id,
             input_model_config,
             timesteps=3,
-            timestep_noise=0.2,
-            timestep_dropout=0.5)
+            timestep_noise=0.08,
+            timestep_dropout=0.2)
 
         sample_task = {
             'task_id': task_id,

@@ -424,7 +424,7 @@ class EnsembleModel(BaseModel):
         return evaluation
 
     def predict_on_batch(self, batch):
-        default_prev = -0.0506
+        default_prev = 0
         ensemble_input = self.input_model.predict_on_batch(batch)
         if self.timesteps == 0:
             return self.model.predict_on_batch(ensemble_input)
