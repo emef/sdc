@@ -74,13 +74,13 @@ if __name__ == '__main__':
     if True:
         sample_task = {
             'task_id': task_id,
-            'dataset_uri': 's3://sdc-matt/datasets/elcamino_trip2',
+            'dataset_uri': 's3://sdc-matt/datasets/elcamino_monterey_320_120',
             'output_uri': 's3://',
             'model_config': SimpleModel.create_categorical(
                 's3://sdc-matt/tmp/' + task_id,
-                cat_classes=3,
+                cat_classes=5,
                 learning_rate=0.01,
-                input_shape=(160, 160, 3)),
+                input_shape=(120, 360, 3)),
             'training_args': {
                 'batch_size': 32,
                 'epochs': 50,

@@ -196,25 +196,25 @@ class SimpleModel(BaseModel):
                            model_uri,
                            cat_classes,
                            input_shape=(160, 160, 3),
-                           learning_rate=0.0001,
+                           learning_rate=0.01,
                            W_l2=0.0001):
         """
         """
         model = Sequential()
         model.add(Convolution2D(20, 5, 5,
             input_shape=input_shape,
-            subsample=(2, 2),
             init= "glorot_uniform",
             activation='relu',
             border_mode='same',
             bias=True))
+        model.add(MaxPooling2D(pool_size=(4, 4)))
         model.add(Convolution2D(50, 4, 4,
-            subsample=(2, 2),
             init= "glorot_uniform",
             activation='relu',
             border_mode='same',
             bias=True))
-        model.add(Convolution2D(50, 3, 3,
+        model.add(MaxPooling2D(pool_size=(2, 2)))
+        model.add(Convolution2D(100, 3, 3,
             subsample=(2, 2),
             init= "glorot_uniform",
             activation='relu',
@@ -222,6 +222,11 @@ class SimpleModel(BaseModel):
             bias=True))
         model.add(MaxPooling2D(pool_size=(2, 2)))
         model.add(Flatten())
+        model.add(Dense(
+            output_dim=64,
+            init='glorot_uniform',
+            activation='relu',
+            bias=True))
         model.add(Dropout(0.5))
         model.add(Dense(
             output_dim=128,
