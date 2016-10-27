@@ -22,7 +22,6 @@ def handle_task(task):
     logger.info('loading model with config %s', task['model_config'])
     model = load_from_config(task['model_config'])
     dataset = load_dataset(task['dataset_uri'])
-    print get_baseline_crossentropy(dataset)
 
     model.fit(dataset, task['training_args'])
     output_config = model.save(task['task_id'])
@@ -67,43 +66,28 @@ def get_baseline_mse(dataset):
     return mse
 
 
-def get_baseline_crossentropy(dataset):
-    """
-    Get the baseline binary cross entry for a leftright dataset using
-    dummy predictor.
-
-    @param - Dataset
-    @return - cross entropy of dummy predictor.
-    """
-    dataset = dataset.as_leftright()
-    prior = dataset.get_training_labels().mean()
-    y_true = dataset.get_testing_labels()
-    y_pred = np.ones(y_true.shape) * prior
-    return binary_crossentropy(
-        tf.convert_to_tensor(y_pred),
-        tf.convert_to_tensor(y_true))
-
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
+    task_id = str(int(time.time()))
 
-    task_id = 'leftright-2.%s' % int(time.time())
 
-    if False:
+    if True:
         sample_task = {
             'task_id': task_id,
             'dataset_uri': 's3://sdc-matt/datasets/elcamino_trip2',
             'output_uri': 's3://',
-            'model_config': SimpleModel.create_leftright(
+            'model_config': SimpleModel.create_categorical(
                 's3://sdc-matt/tmp/' + task_id,
+                cat_classes=3,
                 learning_rate=0.01,
                 input_shape=(160, 160, 3)),
             'training_args': {
                 'batch_size': 32,
-                'epochs': 100,
+                'epochs': 50,
             },
         }
 
-    if True:
+    if False:
         input_model_config = {
             'model_uri': 's3://sdc-matt/simple/leftright-2.1477421619/model.h5',
             'type': 'simple',

@@ -3,8 +3,10 @@ Loading/saving datasets.
 """
 import logging, os, shutil, subprocess, traceback
 
+from keras.utils.np_utils import to_categorical
 import numpy as np
 import requests
+from scipy.stats.mstats import mquantiles
 
 from util import download_dir, parse_s3_uri, upload_dir
 
@@ -22,7 +24,7 @@ class Dataset(object):
                  testing_indexes,
                  validation_indexes,
                  image_file_fmt='%d.png.npy',
-                 leftright=False):
+                 cat_classes=None):
         """
         @param images_base_path - path to image files
         @param labels - 2d array of all label data
@@ -30,7 +32,8 @@ class Dataset(object):
         @param testing_indexes - 1d array of testing indexes
         @param validation_indexes - 1d array of validation indexes
         @param image_file_fmt - format string for image file names
-        @param leftright - if True, transform labels to int(y > 0)
+        @param cat_classes - number of categorical classes; use regression
+                             if not specified (== None)
         """
         self.training_indexes = training_indexes
         self.testing_indexes = testing_indexes
@@ -38,17 +41,21 @@ class Dataset(object):
         self.images_base_path = images_base_path
         self.image_file_fmt = image_file_fmt
 
-        # If leftright transform, set labels = (labels > 0)
-        if leftright:
-            labels = (labels > 0).astype('float64')
+        # If cat_classes specified, map labels to discrete classes
+        if cat_classes is not None:
+            training_labels = labels[training_indexes - 1]
+            prob = np.arange(0, 1, 1. / cat_classes)
+            bins = mquantiles(training_labels, prob)
+            binned_labels = (np.digitize(labels, bins) - 1).astype('float64')
+            self.labels = to_categorical(binned_labels)
+        else:
+            self.labels = labels
 
-        self.labels = labels
-
-    def as_leftright(self):
+    def as_categorical(self, cat_classes=3):
         """
-        Return this dataset as a leftright-transformed dataset.
+        Return this dataset with categorical, binned labels.
 
-        @return - this dataset with leftright=True
+        @return - this dataset with categorical labels
         """
         return Dataset(
             self.images_base_path,
@@ -57,7 +64,7 @@ class Dataset(object):
             self.testing_indexes,
             self.validation_indexes,
             self.image_file_fmt,
-            True)
+            cat_classes)
 
     def get_image_shape(self):
         """
@@ -272,7 +279,7 @@ class InfiniteImageLoadingGenerator(object):
             self.current_index += n
 
     def next(self):
-        default_prev = -0.0506 # TODO: better default
+        default_prev = 0
         samples = np.empty([self.batch_size] + self.image_shape)
         labels = np.empty([self.batch_size] + self.label_shape)
         steps = np.empty((self.batch_size, self.timesteps))

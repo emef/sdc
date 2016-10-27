@@ -79,11 +79,11 @@ class SimpleModel(BaseModel):
 
     def __init__(self, model_config):
         self.model = load_model_from_uri(model_config['model_uri'])
-        self.leftright = model_config.get('leftright', False)
+        self.cat_classes = model_config.get('cat_classes')
 
     def fit(self, dataset, training_args):
-        if self.leftright:
-            dataset = dataset.as_leftright()
+        if self.cat_classes is not None:
+            dataset = dataset.as_categorical(self.cat_classes)
 
         batch_size = training_args.get('batch_size', 100)
         epoch_size = training_args.get(
@@ -104,8 +104,8 @@ class SimpleModel(BaseModel):
             callbacks=[])
 
     def evaluate(self, dataset):
-        if self.leftright:
-            dataset = dataset.as_leftright()
+        if self.cat_classes is not None:
+            dataset = dataset.as_categorical(cat_classes)
 
         n_testing = dataset.get_testing_size()
         evaluation = self.model.evaluate_generator(
@@ -192,11 +192,12 @@ class SimpleModel(BaseModel):
         }
 
     @classmethod
-    def create_leftright(cls,
-                         model_uri,
-                         input_shape=(160, 160, 3),
-                         learning_rate=0.0001,
-                         W_l2=0.0001):
+    def create_categorical(cls,
+                           model_uri,
+                           cat_classes,
+                           input_shape=(160, 160, 3),
+                           learning_rate=0.0001,
+                           W_l2=0.0001):
         """
         """
         model = Sequential()
@@ -229,15 +230,15 @@ class SimpleModel(BaseModel):
             bias=True))
         model.add(Dropout(0.5))
         model.add(Dense(
-            output_dim=1,
+            output_dim=cat_classes,
             init='glorot_uniform',
             W_regularizer=l2(W_l2),
             activation='sigmoid'))
 
 	model.compile(
-            loss='binary_crossentropy',
+            loss='categorical_crossentropy',
             optimizer=SGD(lr=learning_rate, momentum=0.9),
-            metrics=['accuracy'])
+            metrics=['categorical_accuracy'])
 
         # Upload the model to designated path
         upload_model(model, model_uri)
@@ -246,7 +247,7 @@ class SimpleModel(BaseModel):
         return {
             'type': SimpleModel.TYPE,
             'model_uri': model_uri,
-            'leftright': True,
+            'cat_classes': cat_classes,
         }
 
     @classmethod
