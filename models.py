@@ -436,11 +436,16 @@ class EnsembleModel(BaseModel):
 
             return output
 
-    def make_stateful_predictor(self):
+    def make_stateful_predictor(self, apply_transform=False):
         default_prev = 0
         steps = deque([default_prev for _ in xrange(self.timesteps)])
 
-        def predict_fn(ensemble_features):
+        def predict_fn(input_features):
+            if apply_transform:
+                ensemble_features = self.input_model.predict([input_features])[0]
+            else:
+                ensemble_features = input_features
+
             input_dim = len(ensemble_features) + self.timesteps
             sample = (np
                 .concatenate((ensemble_features, steps))
