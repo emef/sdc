@@ -105,7 +105,7 @@ class SimpleModel(BaseModel):
 
     def evaluate(self, dataset):
         if self.cat_classes is not None:
-            dataset = dataset.as_categorical(cat_classes)
+            dataset = dataset.as_categorical(self.cat_classes)
 
         n_testing = dataset.get_testing_size()
         evaluation = self.model.evaluate_generator(
