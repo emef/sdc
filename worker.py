@@ -5,6 +5,7 @@ model, validates it, and writes the results to the db.
 import logging, time
 
 from keras.backend import binary_crossentropy
+from keras.callbacks import Callback
 import numpy as np
 import tensorflow as tf
 
@@ -15,6 +16,18 @@ from datasets import load_dataset
 logger = logging.getLogger(__name__)
 
 
+class SnapshotCallback(Callback):
+    """
+    Callback which saves the model snapshot to s3 on each epoch
+    """
+    def __init__(self, model_to_save, task_id):
+        self.model_to_save = model_to_save
+        self.task_id = task_id
+
+    def on_epoch_end(self, epoch, logs):
+        self.model_to_save.save(task_id)
+
+
 def handle_task(task):
     """
     Runs a tensorflow task.
@@ -23,7 +36,8 @@ def handle_task(task):
     model = load_from_config(task['model_config'])
     dataset = load_dataset(task['dataset_uri'])
 
-    model.fit(dataset, task['training_args'])
+    snapshot = SnapshotCallback(model, task['task_id'])
+    model.fit(dataset, task['training_args'], callbacks=[snapshot])
     output_config = model.save(task['task_id'])
 
     # assume evaluation is mse
@@ -69,7 +83,6 @@ def get_baseline_mse(dataset):
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
     task_id = str(int(time.time()))
-
 
     if True:
         sample_task = {

@@ -32,12 +32,13 @@ class BaseModel(object):
         """
         raise NotImplemented
 
-    def fit(self, dataset, training_args):
+    def fit(self, dataset, training_args, callbacks=None):
         """
         Fit the model with given dataset/args.
 
         @param dataset - a Dataset
         @param training_args - dict of training args
+        @param callbacks - optional list of callbacks to use
         """
         raise NotImplemented
 
@@ -81,7 +82,7 @@ class SimpleModel(BaseModel):
         self.model = load_model_from_uri(model_config['model_uri'])
         self.cat_classes = model_config.get('cat_classes')
 
-    def fit(self, dataset, training_args):
+    def fit(self, dataset, training_args, callbacks=None):
         if self.cat_classes is not None:
             dataset = dataset.as_categorical(self.cat_classes)
 
@@ -101,7 +102,7 @@ class SimpleModel(BaseModel):
             nb_val_samples=validation_size,
             nb_epoch=epochs,
             verbose=1,
-            callbacks=[])
+            callbacks=(callbacks or []))
 
     def evaluate(self, dataset):
         if self.cat_classes is not None:
@@ -372,7 +373,7 @@ class EnsembleModel(BaseModel):
         self.timestep_noise = model_config['timestep_noise']
         self.timestep_dropout = model_config['timestep_dropout']
 
-    def fit(self, dataset, training_args):
+    def fit(self, dataset, training_args, callbacks=None):
         validation_size = training_args.get(
             'validation_size', dataset.get_validation_size())
         epoch_size = training_args.get(
@@ -412,7 +413,7 @@ class EnsembleModel(BaseModel):
             nb_val_samples=validation_size,
             nb_epoch=epochs,
             verbose=1,
-            callbacks=[])
+            callbacks=(callbacks or []))
 
     def evaluate(self, dataset):
         batch_size = 256
