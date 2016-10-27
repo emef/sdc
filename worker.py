@@ -80,7 +80,7 @@ if __name__ == '__main__':
                 's3://sdc-matt/tmp/' + task_id,
                 cat_classes=5,
                 learning_rate=0.01,
-                input_shape=(120, 360, 3)),
+                input_shape=(120, 320, 3)),
             'training_args': {
                 'batch_size': 32,
                 'epochs': 50,
