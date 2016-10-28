@@ -227,12 +227,6 @@ class SimpleModel(BaseModel):
             bias=True))
         model.add(Dropout(0.3))
         model.add(Dense(
-            output_dim=128,
-            init='glorot_uniform',
-            activation='relu',
-            bias=True))
-        model.add(Dropout(0.3))
-        model.add(Dense(
             output_dim=cat_classes,
             init='glorot_uniform',
             W_regularizer=l2(W_l2),
