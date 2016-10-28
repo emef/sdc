@@ -111,9 +111,7 @@ class SimpleModel(BaseModel):
         n_testing = dataset.get_testing_size()
         evaluation = self.model.evaluate_generator(
             dataset.testing_generator(16),
-            (n_testing / 16) * 16,
-            nb_worker=2,
-            pickle_safe=True)
+            (n_testing / 256) * 256)
 
         return evaluation
 
@@ -222,18 +220,13 @@ class SimpleModel(BaseModel):
             bias=True))
         model.add(MaxPooling2D(pool_size=(2, 2)))
         model.add(Flatten())
+        model.add(Dropout(0.3))
         model.add(Dense(
-            output_dim=64,
+            output_dim=256,
             init='glorot_uniform',
             activation='relu',
             bias=True))
-        model.add(Dropout(0.5))
-        model.add(Dense(
-            output_dim=128,
-            init='glorot_uniform',
-            activation='relu',
-            bias=True))
-        model.add(Dropout(0.5))
+        model.add(Dropout(0.3))
         model.add(Dense(
             output_dim=cat_classes,
             init='glorot_uniform',
