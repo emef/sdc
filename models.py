@@ -200,19 +200,25 @@ class SimpleModel(BaseModel):
         """
         """
         model = Sequential()
-        model.add(Convolution2D(20, 4, 4,
+        model.add(Convolution2D(20, 5, 5,
             input_shape=input_shape,
             init= "glorot_uniform",
             activation='relu',
             border_mode='same',
             bias=True))
-        model.add(MaxPooling2D(pool_size=(4, 5)))
-        model.add(Convolution2D(50, 4, 4,
+        model.add(MaxPooling2D(pool_size=(2, 2)))
+        model.add(Convolution2D(50, 5, 5,
             init= "glorot_uniform",
             activation='relu',
             border_mode='same',
             bias=True))
-        model.add(MaxPooling2D(pool_size=(2, 3)))
+        model.add(MaxPooling2D(pool_size=(2, 2)))
+        model.add(Convolution2D(100, 3, 3,
+            init= "glorot_uniform",
+            activation='relu',
+            border_mode='same',
+            bias=True))
+        model.add(MaxPooling2D(pool_size=(2, 2)))
         model.add(Convolution2D(100, 3, 3,
             init= "glorot_uniform",
             activation='relu',
