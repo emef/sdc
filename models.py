@@ -222,7 +222,7 @@ class SimpleModel(BaseModel):
         model.add(Flatten())
         model.add(Dropout(0.3))
         model.add(Dense(
-            output_dim=256,
+            output_dim=64,
             init='glorot_uniform',
             activation='relu',
             bias=True))
