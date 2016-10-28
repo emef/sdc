@@ -220,6 +220,7 @@ class SimpleModel(BaseModel):
             bias=True))
         model.add(MaxPooling2D(pool_size=(2, 2)))
         model.add(Flatten())
+        model.add(Dropout(0.3))
         model.add(Dense(
             output_dim=64,
             init='glorot_uniform',
