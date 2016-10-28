@@ -100,7 +100,7 @@ if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
     task_id = str(int(time.time()))
 
-    if True:
+    if False:
         sample_task = {
             'task_id': task_id,
             'dataset_uri': 's3://sdc-matt/datasets/elcamino_monterey_320_120',
@@ -116,23 +116,23 @@ if __name__ == '__main__':
             },
         }
 
-    if False:
+    if True:
         input_model_config = {
-            'model_uri': 's3://sdc-matt/simple/leftright-2.1477421619/model.h5',
+            'model_uri': 's3://sdc-matt/simple/1477616223/model.h5',
             'type': 'simple',
-            'leftright': True,
+            'cat_classes': 5
         }
 
         ensemble_model_config = EnsembleModel.create(
             's3://sdc-matt/tmp/' + task_id,
             input_model_config,
-            timesteps=3,
-            timestep_noise=0.08,
-            timestep_dropout=0.2)
+            timesteps=5,
+            timestep_noise=0.1,
+            timestep_dropout=0.5)
 
         sample_task = {
             'task_id': task_id,
-            'dataset_uri': 's3://sdc-matt/datasets/elcamino_trip2',
+            'dataset_uri': 's3://sdc-matt/datasets/elcamino_monterey_320_120',
             'model_config': ensemble_model_config,
             'training_args': {
                 'batch_size': 64,
