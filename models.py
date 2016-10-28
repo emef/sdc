@@ -213,6 +213,12 @@ class SimpleModel(BaseModel):
             border_mode='same',
             bias=True))
         model.add(MaxPooling2D(pool_size=(2, 2)))
+        model.add(Convolution2D(100, 5, 5,
+            init= "glorot_uniform",
+            activation='relu',
+            border_mode='same',
+            bias=True))
+        model.add(MaxPooling2D(pool_size=(2, 2)))
         model.add(Convolution2D(100, 3, 3,
             init= "glorot_uniform",
             activation='relu',
