@@ -531,7 +531,7 @@ def prepare_final_dataset(
         image_index = i * 2
         labels[image_index] = row.angle
         labels[image_index + 1] = -row.angle
-        tasks.append((row.filename, images_path, image_index))
+        tasks.append((row.filename, images_path, image_index + 1))
 
     indexes = np.arange(1, n_samples + 1)
     np.random.shuffle(indexes)
