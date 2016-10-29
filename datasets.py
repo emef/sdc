@@ -516,6 +516,7 @@ def prepare_final_dataset(
     # concat all the path directory csvs
     master_df = pd.concat(part_dfs).sort_values('timestamp')
 
+    n_original_samples = len(master_df)
     n_samples = len(master_df) * 2
     n_training = int(training_percent * n_samples)
     n_testing = int(testing_percent * n_samples)
@@ -528,11 +529,11 @@ def prepare_final_dataset(
 
     labels = np.empty(n_samples)
     tasks = []
-    for i, (_, row) in enumerate(master_df.iterrows()):
-        image_index = i * 2
+    for image_index, (_, row) in enumerate(master_df.iterrows()):
         labels[image_index] = row.angle
-        labels[image_index + 1] = -row.angle
-        tasks.append((row.filename, images_path, image_index + 1))
+        labels[image_index + n_original_samples] = -row.angle
+        tasks.append(
+            (row.filename, images_path, image_index + 1, image_index + n_original_samples + 1))
 
     indexes = np.arange(1, n_samples + 1)
     np.random.shuffle(indexes)
@@ -557,9 +558,9 @@ def prepare_final_dataset(
 
 
 def process_final_image(args):
-    src_path, dest_dir, image_index = args
+    src_path, dest_dir, image_index, flipped_image_index = args
     normal_path = os.path.join(dest_dir, '%d.png.npy' % image_index)
-    flipped_path = os.path.join(dest_dir, '%d.png.npy' % (image_index + 1))
+    flipped_path = os.path.join(dest_dir, '%d.png.npy' % flipped_image_index)
 
     cv_image = cv2.imread(src_path)
     cv_image = cv2.resize(cv_image, (320, 240))
