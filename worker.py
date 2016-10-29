@@ -103,12 +103,12 @@ if __name__ == '__main__':
     if False:
         sample_task = {
             'task_id': task_id,
-            'dataset_uri': 's3://sdc-matt/datasets/elcamino_monterey_320_120',
+            'dataset_uri': 's3://sdc-matt/datasets/final_training',
             'output_uri': 's3://',
             'model_config': SimpleModel.create_categorical(
                 's3://sdc-matt/tmp/' + task_id,
                 cat_classes=5,
-                learning_rate=0.001,
+                learning_rate=0.01,
                 input_shape=(120, 320, 3)),
             'training_args': {
                 'batch_size': 32,
@@ -118,7 +118,7 @@ if __name__ == '__main__':
 
     if True:
         input_model_config = {
-            'model_uri': 's3://sdc-matt/simple/1477616223/model.h5',
+            'model_uri': 's3://sdc-matt/simple/1477715388/model.h5',
             'type': 'simple',
             'cat_classes': 5
         }
@@ -126,13 +126,13 @@ if __name__ == '__main__':
         ensemble_model_config = EnsembleModel.create(
             's3://sdc-matt/tmp/' + task_id,
             input_model_config,
-            timesteps=5,
+            timesteps=3,
             timestep_noise=0.1,
             timestep_dropout=0.5)
 
         sample_task = {
             'task_id': task_id,
-            'dataset_uri': 's3://sdc-matt/datasets/elcamino_monterey_320_120',
+            'dataset_uri': 's3://sdc-matt/datasets/final_training',
             'model_config': ensemble_model_config,
             'training_args': {
                 'batch_size': 64,

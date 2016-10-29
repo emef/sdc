@@ -3,6 +3,7 @@ Loading/saving datasets.
 """
 import logging, multiprocessing, os, shutil, subprocess, traceback
 
+import cv2
 from keras.utils.np_utils import to_categorical
 import numpy as np
 import pandas as pd
@@ -502,7 +503,7 @@ def prepare_final_dataset(
     except: pass
 
     part_dfs = []
-    for part_no in sorted(map(int, os.listdir(train_path))):
+    for part_no in os.listdir(train_path):
         part_path = os.path.join(train_path, str(part_no))
         sensor_csv_path = os.path.join(part_path, 'interpolated.csv')
         sensor_df = pd.DataFrame.from_csv(sensor_csv_path)
@@ -551,7 +552,7 @@ def prepare_final_dataset(
         os.path.join(local_output_path, 'validation_indexes.npy'),
         validation_indexes)
 
-    pool = multiprocessing.Pool(16)
+    pool = multiprocessing.Pool(4)
     pool.map(process_final_image, tasks)
 
 

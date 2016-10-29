@@ -439,6 +439,10 @@ class EnsembleModel(BaseModel):
         steps = deque([default_prev for _ in xrange(self.timesteps)])
 
         def predict_fn(input_features):
+            if len(input_features.shape) != 4:
+                input_features = input_features.reshape(
+                    (1,) + input_features.shape)
+
             if apply_transform:
                 ensemble_features = self.input_model.predict([input_features])[0]
             else:
