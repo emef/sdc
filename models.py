@@ -418,7 +418,7 @@ class EnsembleModel(BaseModel):
                             self.timestep_dropout))
 
         return self.model.evaluate_generator(
-            testing_generator, testing_size)
+            testing_generator, self.get_testing_size())
 
     def predict_on_batch(self, batch):
         transformed_batch = self.input_model.predict_on_batch(batch)

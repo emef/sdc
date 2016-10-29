@@ -40,6 +40,7 @@ class SnapshotCallback(Callback):
                 logger.info(
                     'Not snapshotting: %.2f less than previous %.2f',
                     score, self.best)
+                return
 
         self.model_to_save.save(task_id)
 

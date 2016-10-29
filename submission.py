@@ -15,20 +15,22 @@ def main():
     images_path = '/sdc/Challenge 2/Test/center'
     input_shape = (120, 320, 3)
 
+    simple = False
+
     final_model_config = {
         'type': 'ensemble',
         'input_model_config': {
-            'model_uri': 's3://sdc-matt/simple/1477616223/model.h5',
+            'model_uri': 's3://sdc-matt/simple/1477715388/model.h5',
             'type': 'simple',
             'cat_classes': 5,
         },
-        'model_uri': 's3://sdc-matt/ensemble/1477668068/ensemble.h5',
-        'timesteps': 5,
+        'model_uri': 's3://sdc-matt/ensemble/1477725706/ensemble.h5',
+        'timesteps': 3,
         'timestep_noise': 0.1,
         'timestep_dropout': 0.5,
     }
 
-    if True:
+    if simple:
         final_model_config = {
             'type': 'simple',
             'model_uri': 's3://sdc-matt/simple/1477715388/model.h5',
@@ -37,7 +39,7 @@ def main():
 
     model = load_from_config(final_model_config)
 
-    if True:
+    if simple:
         dataset = load_dataset(
             's3://sdc-matt/datasets/final_training')
         training_labels = dataset.get_training_labels()
@@ -71,7 +73,7 @@ def load_test_image(src):
     cv_image = cv2.resize(cv_image, (320, 240))
     cv_image = cv2.cvtColor(cv_image, cv2.COLOR_BGR2YUV)
     cv_image = cv_image[120:240, :, :]
-
+    cv_image = ((cv_image-(255.0/2))/255.0)
     return cv_image
 
 main()
