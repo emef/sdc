@@ -110,7 +110,7 @@ class SimpleModel(BaseModel):
 
         n_testing = dataset.get_testing_size()
         evaluation = self.model.evaluate_generator(
-            dataset.testing_generator(16),
+            dataset.testing_generator(256),
             (n_testing / 256) * 256)
 
         return evaluation
@@ -419,15 +419,15 @@ class EnsembleModel(BaseModel):
         err_count = 0.
         for _ in xrange(n_batches):
             X_batch, y_batch = testing_generator.next()
-            transformed_batch = self.input_model.predict_on_batch(batch)
-            for i in xrange(len(batch)):
+            transformed_batch = self.input_model.predict_on_batch(X_batch)
+            for i in xrange(batch_size):
                 y_pred = predictor(transformed_batch[i])
                 y_true = y_batch[i]
                 err_sum += (y_true - y_pred) ** 2
                 err_count += 1
 
         mse = err_sum / err_count
-        return [mse]
+        return [mse, np.sqrt(mse)]
 
     def predict_on_batch(self, batch):
         transformed_batch = self.input_model.predict_on_batch(batch)
@@ -448,14 +448,16 @@ class EnsembleModel(BaseModel):
         steps = deque([default_prev for _ in xrange(self.timesteps)])
 
         def predict_fn(input_features):
-            if len(input_features.shape) != 4:
-                input_features = input_features.reshape(
-                    (1,) + input_features.shape)
-
             if apply_transform:
-                ensemble_features = self.input_model.predict([input_features])[0]
+                if len(input_features.shape) != 4:
+                    input_features = input_features.reshape(
+                        (1,) + input_features.shape)
+
+                ensemble_features = (self.input_model
+                    .predict([input_features])[0])
             else:
-                ensemble_features = input_features
+                ensemble_features = input_features.reshape(
+                    (np.max(input_features.shape), ))
 
             input_dim = len(ensemble_features) + self.timesteps
             sample = (np

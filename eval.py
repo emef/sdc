@@ -1,6 +1,7 @@
 """
 Evaluate models on the test set.
 """
+import numpy as np
 
 from datasets import load_dataset
 from models import load_from_config
@@ -28,8 +29,8 @@ if __name__ == '__main__':
 
     dataset = load_dataset('s3://sdc-matt/datasets/final_training')
 
-    print '[baseline] %.4f' % dataset.get_baseline_mse()
+    print '[baseline] %.4f' % np.sqrt(dataset.get_baseline_mse())
     for i, model_config in enumerate(model_configs):
         model = load_from_config(model_config)
         metrics = model.evaluate(dataset)
-        print '[%] ' + ', '.join('%.4f' % m for m in metrics)
+        print '[%d] %s' % (i, ', '.join('%.4f' % m for m in metrics))
