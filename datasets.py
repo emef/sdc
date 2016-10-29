@@ -172,6 +172,16 @@ class Dataset(object):
             self.image_file_fmt,
             shuffle_on_exhaust=shuffle_on_exhaust)
 
+    def get_baseline_mse(self):
+        """
+        Get the baseline MSE of a dataset using a dummy predictor.
+
+        @return - mean squared error of dummy predictor on testing set
+        """
+        dummy_predictor = self.get_training_labels().mean()
+        mse = ((self.get_testing_labels() - dummy_predictor) ** 2).mean()
+        return mse
+
 
 class InfiniteImageLoadingGenerator(object):
     """

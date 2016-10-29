@@ -410,15 +410,24 @@ class EnsembleModel(BaseModel):
 
     def evaluate(self, dataset):
         batch_size = 256
-        testing_generator = (dataset
-            .testing_generator(batch_size)
-            .with_transform(self.input_model,
-                            self.timesteps,
-                            self.timestep_noise,
-                            self.timestep_dropout))
+        testing_size = dataset.get_testing_size()
+        testing_generator = dataset.testing_generator(batch_size)
+        predictor = self.make_stateful_predictor()
+        n_batches = testing_size / batch_size
 
-        return self.model.evaluate_generator(
-            testing_generator, self.get_testing_size())
+        err_sum = 0.
+        err_count = 0.
+        for _ in xrange(n_batches):
+            X_batch, y_batch = testing_generator.next()
+            transformed_batch = self.input_model.predict_on_batch(batch)
+            for i in xrange(len(batch)):
+                y_pred = predictor(transformed_batch[i])
+                y_true = y_batch[i]
+                err_sum += (y_true - y_pred) ** 2
+                err_count += 1
+
+        mse = err_sum / err_count
+        return [mse]
 
     def predict_on_batch(self, batch):
         transformed_batch = self.input_model.predict_on_batch(batch)

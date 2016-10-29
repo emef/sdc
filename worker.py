@@ -60,7 +60,7 @@ def handle_task(task):
     # assume evaluation is mse
     evaluation = model.evaluate(dataset)
     training_mse = evaluation[0]
-    baseline_mse = get_baseline_mse(dataset)
+    baseline_mse = dataset.get_baseline_mse()
     improvement = -(training_mse - baseline_mse) / baseline_mse
 
     logger.info('Evaluation: %s', evaluation)
@@ -83,18 +83,6 @@ def handle_task(task):
             logger.info('p=%.5f  l=%.5f', pred, label)
 
     print 'output config = %s' % output_config
-
-
-def get_baseline_mse(dataset):
-    """
-    Get the baseline MSE of a dataset using a dummy predictor.
-
-    @param - Dataset
-    @return - mean squared error of dummy predictor on testing set
-    """
-    dummy_predictor = dataset.get_training_labels().mean()
-    mse = ((dataset.get_testing_labels() - dummy_predictor) ** 2).mean()
-    return mse
 
 
 if __name__ == '__main__':
