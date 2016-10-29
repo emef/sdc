@@ -108,7 +108,7 @@ if __name__ == '__main__':
             'model_config': SimpleModel.create_categorical(
                 's3://sdc-matt/tmp/' + task_id,
                 cat_classes=5,
-                learning_rate=0.01,
+                learning_rate=0.001,
                 input_shape=(120, 320, 3)),
             'training_args': {
                 'batch_size': 32,

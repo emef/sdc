@@ -1,10 +1,11 @@
 """
 Loading/saving datasets.
 """
-import logging, os, shutil, subprocess, traceback
+import logging, multiprocessing, os, shutil, subprocess, traceback
 
 from keras.utils.np_utils import to_categorical
 import numpy as np
+import pandas as pd
 import requests
 from scipy.stats.mstats import mquantiles
 
@@ -484,6 +485,91 @@ def prepare_dataset(
 
     # upload dataset directory to s3
     upload_dir(local_output_path, output_s3_uri)
+
+
+def prepare_final_dataset(
+        local_raw_path,
+        local_output_path,
+        training_percent=0.7,
+        testing_percent=0.2,
+        validation_percent=0.1):
+    train_path = os.path.join(local_raw_path, 'Train')
+
+    # ensure images path exists
+    images_path = os.path.join(local_output_path, 'images')
+    logger.info('Using %s as base images directory', images_path)
+    try: os.makedirs(images_path)
+    except: pass
+
+    part_dfs = []
+    for part_no in sorted(map(int, os.listdir(train_path))):
+        part_path = os.path.join(train_path, str(part_no))
+        sensor_csv_path = os.path.join(part_path, 'interpolated.csv')
+        sensor_df = pd.DataFrame.from_csv(sensor_csv_path)
+        center_df = sensor_df[sensor_df['frame_id'] == 'center_camera'].copy()
+        center_df['filename'] = (
+            (part_path + '/') + center_df.filename.astype(str))
+
+        part_dfs.append(center_df[['timestamp', 'filename', 'angle']])
+
+    # concat all the path directory csvs
+    master_df = pd.concat(part_dfs).sort_values('timestamp')
+
+    n_samples = len(master_df) * 2
+    n_training = int(training_percent * n_samples)
+    n_testing = int(testing_percent * n_samples)
+    n_validation = n_samples - n_training - n_testing
+
+    logger.info('%d total samples in the dataset', n_samples)
+    logger.info('%d samples in training set', n_training)
+    logger.info('%d samples in testing set', n_testing)
+    logger.info('%d samples in validation set', n_validation)
+
+    labels = np.empty(n_samples)
+    tasks = []
+    for i, (_, row) in enumerate(master_df.iterrows()):
+        image_index = i * 2
+        labels[image_index] = row.angle
+        labels[image_index + 1] = -row.angle
+        tasks.append((row.filename, images_path, image_index))
+
+    indexes = np.arange(1, n_samples + 1)
+    np.random.shuffle(indexes)
+
+    training_indexes = indexes[:n_training]
+    testing_indexes = indexes[n_training:(n_training + n_testing)]
+    validation_indexes = indexes[-n_validation:]
+
+    np.save(os.path.join(local_output_path, 'labels.npy'), labels)
+    np.save(
+        os.path.join(local_output_path, 'training_indexes.npy'),
+        training_indexes)
+    np.save(
+        os.path.join(local_output_path, 'testing_indexes.npy'),
+        testing_indexes)
+    np.save(
+        os.path.join(local_output_path, 'validation_indexes.npy'),
+        validation_indexes)
+
+    pool = multiprocessing.Pool(16)
+    pool.map(process_final_image, tasks)
+
+
+def process_final_image(args):
+    src_path, dest_dir, image_index = args
+    normal_path = os.path.join(dest_dir, '%d.png.npy' % image_index)
+    flipped_path = os.path.join(dest_dir, '%d.png.npy' % (image_index + 1))
+
+    cv_image = cv2.imread(src_path)
+    cv_image = cv2.resize(cv_image, (320, 240))
+    cv_image = cv2.cvtColor(cv_image, cv2.COLOR_BGR2YUV)
+    cv_image = cv_image[120:240, :, :]
+
+    np.save(normal_path, cv_image)
+
+    # flip the image over the y axis to equalize left/right turns
+    cv_image = cv_image[:, ::-1, :]
+    np.save(flipped_path, cv_image)
 
 
 if __name__ == '__main__':

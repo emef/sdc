@@ -1,3 +1,4 @@
 boto
 requests
 awscli
+pandas
