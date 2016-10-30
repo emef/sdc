@@ -11,7 +11,7 @@ import tensorflow as tf
 
 from models import (
     load_from_config, upload_model,
-    CategoricalModel, EnsembleModel, LstModel, RegressionModel)
+    CategoricalModel, EnsembleModel, LstmModel, RegressionModel)
 from datasets import load_dataset
 
 logger = logging.getLogger(__name__)
