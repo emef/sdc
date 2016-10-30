@@ -4,6 +4,8 @@ Creating tensorflow models.
 from collections import deque
 import logging, os, tempfile
 
+from keras import backend as K
+from keras import metrics
 from keras.engine.topology import Merge
 from keras.layers import Dense, Dropout, Flatten
 from keras.layers.convolutional import Convolution2D, MaxPooling2D
@@ -302,7 +304,8 @@ class RegressionModel(BaseModel):
 
 	model.compile(
             loss='mean_squared_error',
-            optimizer=optimizer)
+            optimizer=optimizer,
+            metrics=['rmse'])
 
         # Upload the model to designated path
         upload_model(model, model_uri)
@@ -724,3 +727,10 @@ def get_output_dim(model):
             return layer.output_shape[-1]
 
     raise ValueError('Could not infer output dim')
+
+def rmse(y_true, y_pred):
+    '''Calculates RMSE
+    '''
+    return K.sqrt(K.mean(K.square(y_pred - y_true)))
+
+metrics.rmse = rmse
