@@ -61,7 +61,7 @@ def handle_task(task, datasets_dir):
         task.get('score_metric', 'mean_squared_error'))
 
     logger.info('Baseline mse = %.4f  rmse = %.4f' % (
-        baseline_mse, np.sqrt(baseline_mse))
+        baseline_mse, np.sqrt(baseline_mse)))
     model.fit(dataset, task['training_args'], callbacks=[snapshot])
     output_config = model.save(task['task_id'])
 
