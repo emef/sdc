@@ -199,6 +199,119 @@ class CategoricalModel(BaseModel):
             'thresholds': thresholds,
         }
 
+class RegressionModel(BaseModel):
+    TYPE = 'regression'
+
+    def __init__(self, model_config):
+        self.model = load_model_from_uri(model_config['model_uri'])
+
+    def fit(self, dataset, training_args, callbacks=None):
+        batch_size = training_args.get('batch_size', 100)
+        epoch_size = training_args.get(
+            'epoch_size', dataset.get_training_size())
+        validation_size = training_args.get(
+            'validation_size', dataset.get_validation_size())
+        epochs = training_args.get('epochs', 5)
+
+        self.model.summary()
+
+        history = self.model.fit_generator(
+            dataset.training_generator(batch_size),
+            validation_data=dataset.validation_generator(batch_size),
+            samples_per_epoch=epoch_size,
+            nb_val_samples=validation_size,
+            nb_epoch=epochs,
+            verbose=1,
+            callbacks=(callbacks or []))
+
+    def evaluate(self, dataset):
+        n_testing = dataset.get_testing_size()
+        return  self.model.evaluate_generator(
+            dataset.testing_generator(256),
+            (n_testing / 256) * 256)
+
+    def predict_on_batch(self, batch):
+        return self.model.predict_on_batch(batch)
+
+    def as_encoder(self):
+        # remove the last output layers to retain the feature maps
+        deep_copy = deep_copy_model(self.model)
+        for _ in xrange(4):
+            deep_copy.pop()
+        return deep_copy_model(deep_copy)
+
+    def output_dim(self):
+        return get_output_dim(self.model)
+
+    def save(self, task_id):
+        s3_uri = 's3://sdc-matt/regression/%s/model.h5' % task_id
+        upload_model(self.model, s3_uri)
+
+        return {
+            'type': RegressionModel.TYPE,
+            'model_uri': s3_uri,
+            'thresholds': self.thresholds,
+        }
+
+    @classmethod
+    def create(cls,
+               model_uri,
+               input_shape=(120, 320, 3),
+               use_adadelta=True,
+               learning_rate=0.01,
+               W_l2=0.0001):
+        """
+        """
+        model = Sequential()
+        model.add(Convolution2D(16, 5, 5,
+            input_shape=input_shape,
+            init= "glorot_uniform",
+            activation='relu',
+            border_mode='same',
+            bias=True))
+        model.add(MaxPooling2D(pool_size=(4, 5)))
+        model.add(Convolution2D(32, 4, 4,
+            init= "glorot_uniform",
+            activation='relu',
+            border_mode='same',
+            bias=True))
+        model.add(MaxPooling2D(pool_size=(2, 3)))
+        model.add(Convolution2D(64, 3, 3,
+            init= "glorot_uniform",
+            activation='relu',
+            border_mode='same',
+            bias=True))
+        model.add(MaxPooling2D(pool_size=(2, 2)))
+        model.add(Flatten())
+        model.add(Dropout(0.5))
+        model.add(Dense(
+            output_dim=64,
+            init='glorot_uniform',
+            activation='relu',
+            bias=True))
+        model.add(Dropout(0.5))
+        model.add(Dense(
+            output_dim=1,
+            init='glorot_uniform',
+            W_regularizer=l2(W_l2),
+            activation='sigmoid'))
+
+        optimizer = ('adadelta' if use_adadelta
+                     else SGD(lr=learning_rate, momentum=0.9))
+
+	model.compile(
+            loss='mean_squared_error',
+            optimizer=optimizer)
+
+        # Upload the model to designated path
+        upload_model(model, model_uri)
+
+        # Return model_config params compatible with constructor
+        return {
+            'type': RegressionModel.TYPE,
+            'model_uri': model_uri,
+        }
+
 
 class EnsembleModel(BaseModel):
     """
@@ -401,6 +514,7 @@ MODEL_CLASS_BY_TYPE = {
     'simple': CategoricalModel,  # backwards compat
     CategoricalModel.TYPE: CategoricalModel,
     EnsembleModel.TYPE: EnsembleModel,
+    RegressionModel.TYPE: RegressionModel,
 }
 
 

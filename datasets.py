@@ -584,6 +584,58 @@ def process_final_image(args):
     np.save(flipped_path, cv_image)
 
 
+def prepare_thresholded_dataset(src_path,
+                                local_output_path,
+                                min_threshold=None,
+                                max_threshold=None,
+                                training_percent=0.7,
+                                testing_percent=0.2,
+                                validation_percent=0.1):
+    try: os.makedirs(local_output_path)
+    except: pass
+
+    subprocess.call([
+        'ln', '-s',
+        os.path.join(src_path, 'images'),
+        os.path.join(local_output_path, 'images')])
+
+    labels = np.load(os.path.join(src_path, 'labels.npy'))
+
+    cond = (labels > -99999999)  # hack;
+    if min_threshold is not None:
+        cond &= (labels >= min_threshold)
+    if max_threshold is not None:
+        cond &= (labels <= max_threshold)
+
+    all_indexes = np.arange(1, len(labels) + 1)
+    indexes = all_indexes[np.where(cond)[0]]
+    np.random.shuffle(indexes)
+
+    n_samples = len(indexes)
+    n_training = int(training_percent * n_samples)
+    n_testing = int(testing_percent * n_samples)
+    n_validation = n_samples - n_training - n_testing
+
+    training_indexes = indexes[:n_training]
+    testing_indexes = indexes[n_training:(n_training + n_testing)]
+    validation_indexes = indexes[-n_validation:]
+
+    # create the properly-formatted dataset directory
+    np.save(os.path.join(local_output_path, 'labels.npy'), labels)
+    np.save(
+        os.path.join(local_output_path, 'training_indexes.npy'),
+        training_indexes)
+    np.save(
+        os.path.join(local_output_path, 'testing_indexes.npy'),
+        testing_indexes)
+    np.save(
+        os.path.join(local_output_path, 'validation_indexes.npy'),
+        validation_indexes)
+
+
+
+
+
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
 

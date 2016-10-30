@@ -10,7 +10,8 @@ import numpy as np
 import tensorflow as tf
 
 from models import (
-    load_from_config, upload_model, CategoricalModel, EnsembleModel)
+    load_from_config, upload_model,
+    CategoricalModel, EnsembleModel, RegressionModel)
 from datasets import load_dataset
 
 logger = logging.getLogger(__name__)
@@ -66,6 +67,9 @@ def handle_task(task):
     logger.info('Evaluation: %s', evaluation)
     logger.info('Baseline MSE %.5f, training MSE %.5f, improvement %.2f%%',
                 baseline_mse, training_mse, improvement * 100)
+    logger.info('output config: %s' % output_config)
+
+    return
 
     example_ranges = 10
     range_size = 20
@@ -82,8 +86,6 @@ def handle_task(task):
         for pred, label in zip(predictions, example_labels):
             logger.info('p=%.5f  l=%.5f', pred, label)
 
-    print 'output config = %s' % output_config
-
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
@@ -94,14 +96,31 @@ if __name__ == '__main__':
             'task_id': task_id,
             'dataset_uri': 's3://sdc-matt/datasets/final_training',
             'output_uri': 's3://',
-            'model_config': CategoricalModel.create(
+            'model_config': RegressionModel.create(
                 's3://sdc-matt/tmp/' + task_id,
-                use_adadelta=False,
+                use_adadelta=True,
                 learning_rate=0.001,
                 input_shape=(120, 320, 3)),
             'training_args': {
-                'batch_size': 32,
-                'epochs': 5,
+                'batch_size': 64,
+                'epochs': 50,
+            },
+        }
+
+
+    if False:
+        sample_task = {
+            'task_id': task_id,
+            'dataset_uri': 's3://sdc-matt/datasets/final_training',
+            'output_uri': 's3://',
+            'model_config': CategoricalModel.create(
+                's3://sdc-matt/tmp/' + task_id,
+                use_adadelta=True,
+                learning_rate=0.001,
+                input_shape=(120, 320, 3)),
+            'training_args': {
+                'batch_size': 64,
+                'epochs': 50,
             },
         }
 
