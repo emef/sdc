@@ -53,21 +53,23 @@ def handle_task(task, datasets_dir):
     logger.info('loading model with config %s', task['model_config'])
     model = load_from_config(task['model_config'])
     dataset = load_dataset(task['dataset_uri'], cache_dir=datasets_dir)
+    baseline_mse = dataset.get_baseline_mse()
 
     snapshot = SnapshotCallback(
         model,
         task['task_id'],
         task.get('score_metric', 'mean_squared_error'))
 
+    logger.info('Baseline mse = %.4f  rmse = %.4f' % (
+        baseline_mse, np.sqrt(baseline_mse))
     model.fit(dataset, task['training_args'], callbacks=[snapshot])
     output_config = model.save(task['task_id'])
 
     # assume evaluation is mse
     evaluation = model.evaluate(dataset)
     training_mse = evaluation[0]
-    baseline_mse = dataset.get_baseline_mse()
-    improvement = -(training_mse - baseline_mse) / baseline_mse
 
+    improvement = -(training_mse - baseline_mse) / baseline_mse
     logger.info('Evaluation: %s', evaluation)
     logger.info('Baseline MSE %.5f, training MSE %.5f, improvement %.2f%%',
                 baseline_mse, training_mse, improvement * 100)
