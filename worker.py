@@ -54,7 +54,11 @@ def handle_task(task, datasets_dir):
     model = load_from_config(task['model_config'])
     dataset = load_dataset(task['dataset_uri'], cache_dir=datasets_dir)
 
-    snapshot = SnapshotCallback(model, task['task_id'])
+    snapshot = SnapshotCallback(
+        model,
+        task['task_id'],
+        task.get('score_metric', 'mean_squared_error'))
+
     model.fit(dataset, task['training_args'], callbacks=[snapshot])
     output_config = model.save(task['task_id'])
 
@@ -95,6 +99,7 @@ if __name__ == '__main__':
     if True:
         task = {
             'task_id': task_id,
+            'score_metric': 'rmse',
             'dataset_uri': 's3://sdc-matt/datasets/final_training',
             'output_uri': 's3://',
             'model_config': RegressionModel.create(
