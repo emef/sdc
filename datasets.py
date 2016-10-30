@@ -189,6 +189,8 @@ class InfiniteImageLoadingGenerator(object):
     Iterable object which loads the next batch of (image, label) tuples
     in the data set.
     """
+    GENERATOR_TYPE = ['timestepped_labels', 'timestepped_images']
+
     def __init__(self,
                  batch_size,
                  indexes,
@@ -199,7 +201,8 @@ class InfiniteImageLoadingGenerator(object):
                  timesteps=0,
                  timestep_noise=0,
                  timestep_dropout=0,
-                 transform_model=None):
+                 transform_model=None,
+                 generator_type='timestepped_labels'):
         """
         @param batch_size - number of images to generate per batch
         @param indexes - array (N,) of image index IDs
@@ -223,8 +226,8 @@ class InfiniteImageLoadingGenerator(object):
         self.timestep_dropout = timestep_dropout
         self.transform_model = transform_model
 
-        # can't have timesteps > 0 and no transform_model
-        assert timesteps == 0 or transform_model is not None
+        assert generator_type in self.GENERATOR_TYPE
+        self.generator_type = generator_type
 
         self.current_index = 0
         self.image_shape = list(self.load_image(self.indexes[0]).shape)
@@ -256,6 +259,32 @@ class InfiniteImageLoadingGenerator(object):
             timestep_noise=timestep_noise,
             timestep_dropout=timestep_dropout,
             transform_model=transform_model)
+
+    def with_timesteps(self,
+ 		       generator_type,
+                       timesteps=0,
+                       timestep_noise=0,
+                       timestep_dropout=0):
+        """
+        Add a model transform and optionally label/image timesteps.
+
+        @param timesteps - number of previous labels to append to samples
+        @param timestep_noise - random noise factor to apply to prev labels
+        @param timestep_dropout - percent chance prev label gets set to 0
+        @param generator_type - one of GENERATOR_TYPES
+        @return - image-loading iterator with transform/stepsize
+        """
+        return InfiniteImageLoadingGenerator(
+            batch_size=self.batch_size,
+            indexes=self.indexes,
+            labels=self.labels,
+            images_base_path=self.images_base_path,
+            image_file_fmt=self.image_file_fmt,
+            shuffle_on_exhaust=self.shuffle_on_exhaust,
+            timesteps=timesteps,
+            timestep_noise=timestep_noise,
+            timestep_dropout=timestep_dropout,
+            generator_type=generator_type)
 
     def __iter__(self):
         return self
@@ -295,15 +324,17 @@ class InfiniteImageLoadingGenerator(object):
         default_prev = 0
         samples = np.empty([self.batch_size] + self.image_shape)
         labels = np.empty([self.batch_size] + self.label_shape)
-        steps = np.empty((self.batch_size, self.timesteps))
+        if self.generator_type == 'timestepped_labels':
+            steps = np.empty((self.batch_size, self.timesteps))
+        elif self.generator_type == 'timestepped_images':
+            steps = np.empty([self.batch_size] + [self.timesteps] + self.image_shape)
 
         for i in xrange(self.batch_size):
             next_image_index = self.indexes[self.current_index]
 
+            image = self.load_image(next_image_index)
             # image indexes are 1-indexed
             next_label_index = next_image_index - 1
-
-            image = self.load_image(next_image_index)
             label = self.labels[next_label_index]
 
             samples[i] = image
@@ -311,10 +342,14 @@ class InfiniteImageLoadingGenerator(object):
 
             for step in xrange(self.timesteps):
                 step_index = next_label_index - step - 1
-                prev = (self.labels[step_index]
-                        if 0 <= step_index <= next_label_index
-                        else default_prev)
-                steps[i, step] = prev
+                if self.generator_type == 'timestepped_labels':
+                    prev = (self.labels[step_index]
+                            if 0 <= step_index <= next_label_index
+                            else default_prev)
+                    steps[i, step] = prev
+                elif self.generator_type == 'timestepped_images':
+                    if 0 <= step_index <= next_label_index:
+                        steps[i, self.timesteps - step - 1, :, :, :] = self.load_image(step_index + 1)
 
             self.incr_index()
 
@@ -322,11 +357,14 @@ class InfiniteImageLoadingGenerator(object):
             samples = self.transform_model.predict_on_batch(samples)
 
         if self.timesteps > 0:
-            steps += np.random.randn(*steps.shape) * self.timestep_noise
-            steps *= (
-                1 - (np.random.rand(*steps.shape) < self.timestep_dropout)
-            ).astype(int)
-            samples = np.concatenate((samples, steps), axis=1)
+            if self.generator_type == 'timestepped_labels':
+                steps += np.random.randn(*steps.shape) * self.timestep_noise
+                steps *= (
+                    1 - (np.random.rand(*steps.shape) < self.timestep_dropout)
+                ).astype(int)
+                samples = np.concatenate((samples, steps), axis=1)
+            elif self.generator_type == 'timestepped_images':
+                samples = np.concatenate((steps, np.expand_dims(samples, axis=1)), axis=1)
 
         return (samples, labels)
 
