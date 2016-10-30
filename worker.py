@@ -10,7 +10,8 @@ import numpy as np
 import tensorflow as tf
 
 from models import (
-    load_from_config, upload_model, CategoricalModel, EnsembleModel)
+    load_from_config, upload_model, 
+    CategoricalModel, LstmModel, EnsembleModel)
 from datasets import load_dataset
 
 logger = logging.getLogger(__name__)
@@ -45,13 +46,13 @@ class SnapshotCallback(Callback):
         self.model_to_save.save(task_id)
 
 
-def handle_task(task):
+def handle_task(task, datasets_dir):
     """
     Runs a tensorflow task.
     """
     logger.info('loading model with config %s', task['model_config'])
     model = load_from_config(task['model_config'])
-    dataset = load_dataset(task['dataset_uri'])
+    dataset = load_dataset(task['dataset_uri'], cache_dir=datasets_dir)
 
     snapshot = SnapshotCallback(model, task['task_id'])
     model.fit(dataset, task['training_args'], callbacks=[snapshot])
@@ -88,6 +89,7 @@ def handle_task(task):
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
     task_id = str(int(time.time()))
+    datasets_dir = "/home/ubuntu"
 
     if True:
         sample_task = {
@@ -125,8 +127,31 @@ if __name__ == '__main__':
             'model_config': ensemble_model_config,
             'training_args': {
                 'batch_size': 64,
-                'epochs': 10,
+                'epochs': 3
             },
         }
 
-    handle_task(sample_task)
+    if False:
+        input_model_config = {
+            'model_uri': 's3://sdc-matt/simple/1477715388/model.h5',
+            'type': 'simple',
+            'cat_classes': 5
+        }
+
+        lstm_model_config = LstmModel.create(
+            's3://sdc-matt/tmp/' + task_id,
+            input_model_config,
+            (10, 120, 320, 3),
+            timesteps=9)
+
+        sample_task = {
+            'task_id': task_id,
+            'dataset_uri': 's3://sdc-matt/datasets/final_training',
+            'model_config': lstm_model_config,
+            'training_args': {
+                'batch_size': 64,
+                'epochs': 10
+            },
+        }
+
+    handle_task(sample_task, datasets_dir)
