@@ -7,6 +7,8 @@ import logging, os, tempfile
 from keras.engine.topology import Merge
 from keras.layers import Dense, Dropout, Flatten
 from keras.layers.convolutional import Convolution2D, MaxPooling2D
+from keras.layers.recurrent import LSTM
+from keras.layers.wrappers import TimeDistributed
 from keras.models import Sequential
 from keras.models import load_model as keras_load_model
 from keras.optimizers import SGD
@@ -410,15 +412,24 @@ class EnsembleModel(BaseModel):
 
     def evaluate(self, dataset):
         batch_size = 256
-        testing_generator = (dataset
-            .testing_generator(batch_size)
-            .with_transform(self.input_model,
-                            self.timesteps,
-                            self.timestep_noise,
-                            self.timestep_dropout))
+        testing_size = dataset.get_testing_size()
+        testing_generator = dataset.testing_generator(batch_size)
+        predictor = self.make_stateful_predictor()
+        n_batches = testing_size / batch_size
 
-        return self.model.evaluate_generator(
-            testing_generator, testing_size)
+        err_sum = 0.
+        err_count = 0.
+        for _ in xrange(n_batches):
+            X_batch, y_batch = testing_generator.next()
+            transformed_batch = self.input_model.predict_on_batch(X_batch)
+            for i in xrange(len(X_batch)):
+                y_pred = predictor(transformed_batch[i])
+                y_true = y_batch[i]
+                err_sum += (y_true - y_pred) ** 2
+                err_count += 1
+
+        mse = err_sum / err_count
+        return [mse]
 
     def predict_on_batch(self, batch):
         transformed_batch = self.input_model.predict_on_batch(batch)
@@ -525,10 +536,148 @@ class EnsembleModel(BaseModel):
             'input_model_config': input_model_config,
         }
 
+class LstmModel(BaseModel):
+    """
+    """
+    TYPE = 'lstm'
+
+    def __init__(self, model_config):
+        self.input_model_config = model_config['input_model_config']
+        self.input_model = load_from_config(
+            self.input_model_config
+        ).as_encoder()
+
+        self.model = load_model_from_uri(
+            model_config['model_uri'])
+
+        self.timesteps = model_config['timesteps']
+
+    def fit(self, dataset, training_args, callbacks=None):
+        validation_size = training_args.get(
+            'validation_size', dataset.get_validation_size())
+        epoch_size = training_args.get(
+            'epoch_size', dataset.get_training_size())
+        batch_size = training_args.get('batch_size', 100)
+        epochs = training_args.get('epochs', 5)
+
+        input_model = self.input_model
+        timesteps = self.timesteps
+
+        self.model.summary()
+
+        batch, _ = (dataset.training_generator(batch_size).next())
+
+        # NOTE: for some reason if I don't call this then everything breaks
+        # TODO: why?
+        input_model.predict_on_batch(batch)
+
+        training_generator = (dataset
+            .training_generator(batch_size)
+            .with_timesteps('timestepped_images', timesteps=timesteps))
+
+        validation_generator = (dataset
+            .validation_generator(batch_size)
+            .with_timesteps('timestepped_images', timesteps=timesteps))
+
+        # NOTE: can't use fit with parallel loading or it locks up
+        # TODO: why?
+        history = self.model.fit_generator(
+            training_generator,
+            validation_data=validation_generator,
+            samples_per_epoch=epoch_size,
+            nb_val_samples=validation_size,
+            nb_epoch=epochs,
+            verbose=1,
+            callbacks=(callbacks or []))
+
+    def evaluate(self, dataset):
+        batch_size = 256
+        testing_size = dataset.get_testing_size()
+        testing_generator = (dataset
+            .testing_generator(batch_size)
+            .with_timesteps('timestepped_images', timesteps=self.timesteps))
+        n_batches = testing_size / batch_size
+
+        err_sum = 0.
+        err_count = 0.
+        for _ in xrange(n_batches):
+            X_batch, y_batch = testing_generator.next()
+            for i in xrange(len(X_batch)):
+                y_pred = self.model.predict_on_batch(X_batch)
+                y_true = y_batch[i]
+                err_sum += (y_true - y_pred) ** 2
+                err_count += 1
+
+        mse = err_sum / err_count
+        return [mse]
+
+    def predict_on_batch(self, batch):
+        input = np.empty([len(batch)] + [self.timesteps] + batch[0].shape)
+        for index in xrange(len(batch)):
+            for step in xrange(self.timesteps):
+                if 0 <= step <= index:
+                    input[index, len(self.timesteps) - step - 1, :, :, :] = batch[index]
+        return self.model.predict_on_batch(input)
+
+    def save(self, task_id):
+        ensemble_s3_uri = 's3://sdc-matt/lstm/%s/lstm.h5' % task_id
+        upload_model(self.model, ensemble_s3_uri)
+
+        return {
+            'type': LstmModel.TYPE,
+            'timesteps': self.timesteps,
+            'timestep_noise': self.timestep_noise,
+            'timestep_dropout': self.timestep_dropout,
+            'model_uri': ensemble_s3_uri,
+            'input_model_config': self.input_model_config,
+        }
+
+    @classmethod
+    def create(cls,
+      model_uri,
+      input_model_config,
+      input_shape,
+      timesteps=0,
+      timestep_noise=0,
+      timestep_dropout=0,
+      loss='mean_squared_error',
+      learning_rate=0.001,
+      momentum=0.9,
+      W_l2=0.001,
+      metrics=None):
+
+        input_model = load_from_config(input_model_config).as_encoder()
+        metrics = metrics or ['mse']
+        sgd = SGD(lr=learning_rate,
+            momentum=momentum,
+            nesterov=False)
+
+        model = Sequential()
+        model.add(TimeDistributed(input_model, input_shape=input_shape))
+        model.add(LSTM(256))
+        model.add(Dense(
+            output_dim=1,
+            init='glorot_uniform',
+            W_regularizer=l2(W_l2)))
+
+        model.compile(loss=loss, optimizer=sgd, metrics=metrics)
+
+        # Upload the model to designated path
+        upload_model(model, model_uri)
+
+        return {
+            'type': LstmModel.TYPE,
+            'timesteps': timesteps,
+            'timestep_noise': timestep_noise,
+            'timestep_dropout': timestep_dropout,
+            'model_uri': model_uri,
+            'input_model_config': input_model_config,
+        }
 
 MODEL_CLASS_BY_TYPE = {
     SimpleModel.TYPE: SimpleModel,
     EnsembleModel.TYPE: EnsembleModel,
+    LstmModel.TYPE: LstmModel
 }
 
 

@@ -10,7 +10,7 @@ import numpy as np
 import tensorflow as tf
 
 from models import (
-    load_from_config, upload_model, EnsembleModel, SimpleModel)
+    load_from_config, upload_model, EnsembleModel, LstmModel, SimpleModel)
 from datasets import load_dataset
 
 logger = logging.getLogger(__name__)
@@ -40,17 +40,18 @@ class SnapshotCallback(Callback):
                 logger.info(
                     'Not snapshotting: %.2f less than previous %.2f',
                     score, self.best)
+                return
 
         self.model_to_save.save(task_id)
 
 
-def handle_task(task):
+def handle_task(task, datasets_dir):
     """
     Runs a tensorflow task.
     """
     logger.info('loading model with config %s', task['model_config'])
     model = load_from_config(task['model_config'])
-    dataset = load_dataset(task['dataset_uri'])
+    dataset = load_dataset(task['dataset_uri'], cache_dir=datasets_dir)
 
     snapshot = SnapshotCallback(model, task['task_id'])
     model.fit(dataset, task['training_args'], callbacks=[snapshot])
@@ -59,7 +60,7 @@ def handle_task(task):
     # assume evaluation is mse
     evaluation = model.evaluate(dataset)
     training_mse = evaluation[0]
-    baseline_mse = get_baseline_mse(dataset)
+    baseline_mse = dataset.get_baseline_mse()
     improvement = -(training_mse - baseline_mse) / baseline_mse
 
     logger.info('Evaluation: %s', evaluation)
@@ -84,21 +85,10 @@ def handle_task(task):
     print 'output config = %s' % output_config
 
 
-def get_baseline_mse(dataset):
-    """
-    Get the baseline MSE of a dataset using a dummy predictor.
-
-    @param - Dataset
-    @return - mean squared error of dummy predictor on testing set
-    """
-    dummy_predictor = dataset.get_training_labels().mean()
-    mse = ((dataset.get_testing_labels() - dummy_predictor) ** 2).mean()
-    return mse
-
-
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
     task_id = str(int(time.time()))
+    datasets_dir = "/media/drive"
 
     if False:
         sample_task = {
@@ -116,7 +106,7 @@ if __name__ == '__main__':
             },
         }
 
-    if True:
+    if False:
         input_model_config = {
             'model_uri': 's3://sdc-matt/simple/1477715388/model.h5',
             'type': 'simple',
@@ -140,4 +130,27 @@ if __name__ == '__main__':
             },
         }
 
-    handle_task(sample_task)
+    if True:
+        input_model_config = {
+            'model_uri': 's3://sdc-matt/simple/1477715388/model.h5',
+            'type': 'simple',
+            'cat_classes': 5
+        }
+
+        lstm_model_config = LstmModel.create(
+            's3://sdc-matt/tmp/' + task_id,
+            input_model_config,
+            (10, 120, 320, 3),
+            timesteps=9)
+
+        sample_task = {
+            'task_id': task_id,
+            'dataset_uri': 's3://sdc-matt/datasets/final_training',
+            'model_config': lstm_model_config,
+            'training_args': {
+                'batch_size': 64,
+                'epochs': 1,
+            },
+        }
+
+    handle_task(sample_task, datasets_dir)

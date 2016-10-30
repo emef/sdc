@@ -172,12 +172,24 @@ class Dataset(object):
             self.image_file_fmt,
             shuffle_on_exhaust=shuffle_on_exhaust)
 
+    def get_baseline_mse(self):
+        """
+        Get the baseline MSE of a dataset using a dummy predictor.
+
+        @return - mean squared error of dummy predictor on testing set
+        """
+        dummy_predictor = self.get_training_labels().mean()
+        mse = ((self.get_testing_labels() - dummy_predictor) ** 2).mean()
+        return mse
+
 
 class InfiniteImageLoadingGenerator(object):
     """
     Iterable object which loads the next batch of (image, label) tuples
     in the data set.
     """
+    GENERATOR_TYPE = ['timestepped_labels', 'timestepped_images']
+
     def __init__(self,
                  batch_size,
                  indexes,
@@ -188,7 +200,8 @@ class InfiniteImageLoadingGenerator(object):
                  timesteps=0,
                  timestep_noise=0,
                  timestep_dropout=0,
-                 transform_model=None):
+                 transform_model=None,
+                 generator_type='timestepped_labels'):
         """
         @param batch_size - number of images to generate per batch
         @param indexes - array (N,) of image index IDs
@@ -212,8 +225,8 @@ class InfiniteImageLoadingGenerator(object):
         self.timestep_dropout = timestep_dropout
         self.transform_model = transform_model
 
-        # can't have timesteps > 0 and no transform_model
-        assert timesteps == 0 or transform_model is not None
+        assert generator_type in self.GENERATOR_TYPE
+        self.generator_type = generator_type
 
         self.current_index = 0
         self.image_shape = list(self.load_image(self.indexes[0]).shape)
@@ -245,6 +258,32 @@ class InfiniteImageLoadingGenerator(object):
             timestep_noise=timestep_noise,
             timestep_dropout=timestep_dropout,
             transform_model=transform_model)
+
+    def with_timesteps(self,
+ 		       generator_type,
+                       timesteps=0,
+                       timestep_noise=0,
+                       timestep_dropout=0):
+        """
+        Add a model transform and optionally label/image timesteps.
+
+        @param timesteps - number of previous labels to append to samples
+        @param timestep_noise - random noise factor to apply to prev labels
+        @param timestep_dropout - percent chance prev label gets set to 0
+        @param generator_type - one of GENERATOR_TYPES
+        @return - image-loading iterator with transform/stepsize
+        """
+        return InfiniteImageLoadingGenerator(
+            batch_size=self.batch_size,
+            indexes=self.indexes,
+            labels=self.labels,
+            images_base_path=self.images_base_path,
+            image_file_fmt=self.image_file_fmt,
+            shuffle_on_exhaust=self.shuffle_on_exhaust,
+            timesteps=timesteps,
+            timestep_noise=timestep_noise,
+            timestep_dropout=timestep_dropout,
+            generator_type=generator_type)
 
     def __iter__(self):
         return self
@@ -284,15 +323,17 @@ class InfiniteImageLoadingGenerator(object):
         default_prev = 0
         samples = np.empty([self.batch_size] + self.image_shape)
         labels = np.empty([self.batch_size] + self.label_shape)
-        steps = np.empty((self.batch_size, self.timesteps))
+        if self.generator_type == 'timestepped_labels':
+            steps = np.empty((self.batch_size, self.timesteps))
+        elif self.generator_type == 'timestepped_images':
+            steps = np.empty([self.batch_size] + [self.timesteps] + self.image_shape)
 
         for i in xrange(self.batch_size):
             next_image_index = self.indexes[self.current_index]
 
+            image = self.load_image(next_image_index)
             # image indexes are 1-indexed
             next_label_index = next_image_index - 1
-
-            image = self.load_image(next_image_index)
             label = self.labels[next_label_index]
 
             samples[i] = image
@@ -300,10 +341,14 @@ class InfiniteImageLoadingGenerator(object):
 
             for step in xrange(self.timesteps):
                 step_index = next_label_index - step - 1
-                prev = (self.labels[step_index]
-                        if 0 <= step_index <= next_label_index
-                        else default_prev)
-                steps[i, step] = prev
+                if self.generator_type == 'timestepped_labels':
+                    prev = (self.labels[step_index]
+                            if 0 <= step_index <= next_label_index
+                            else default_prev)
+                    steps[i, step] = prev
+                elif self.generator_type == 'timestepped_images':
+                    if 0 <= step_index <= next_label_index:
+                        steps[i, self.timesteps - step - 1, :, :, :] = self.load_image(step_index + 1)
 
             self.incr_index()
 
@@ -311,12 +356,14 @@ class InfiniteImageLoadingGenerator(object):
             samples = self.transform_model.predict_on_batch(samples)
 
         if self.timesteps > 0:
-            steps += np.random.randn(*steps.shape) * self.timestep_noise
-            steps *= (
-                1 - (np.random.rand(*steps.shape) < self.timestep_dropout)
-            ).astype(int)
-            samples = np.concatenate((samples, steps), axis=1)
-
+            if self.generator_type == 'timestepped_labels':
+                steps += np.random.randn(*steps.shape) * self.timestep_noise
+                steps *= (
+                    1 - (np.random.rand(*steps.shape) < self.timestep_dropout)
+                ).astype(int)
+                samples = np.concatenate((samples, steps), axis=1)
+            elif self.generator_type == 'timestepped_images':
+                samples = np.concatenate((steps, np.expand_dims(samples, axis=1)), axis=1)
 
         return (samples, labels)
 
@@ -516,6 +563,7 @@ def prepare_final_dataset(
     # concat all the path directory csvs
     master_df = pd.concat(part_dfs).sort_values('timestamp')
 
+    n_original_samples = len(master_df)
     n_samples = len(master_df) * 2
     n_training = int(training_percent * n_samples)
     n_testing = int(testing_percent * n_samples)
@@ -528,11 +576,11 @@ def prepare_final_dataset(
 
     labels = np.empty(n_samples)
     tasks = []
-    for i, (_, row) in enumerate(master_df.iterrows()):
-        image_index = i * 2
+    for image_index, (_, row) in enumerate(master_df.iterrows()):
         labels[image_index] = row.angle
-        labels[image_index + 1] = -row.angle
-        tasks.append((row.filename, images_path, image_index + 1))
+        labels[image_index + n_original_samples] = -row.angle
+        tasks.append(
+            (row.filename, images_path, image_index + 1, image_index + n_original_samples + 1))
 
     indexes = np.arange(1, n_samples + 1)
     np.random.shuffle(indexes)
@@ -557,9 +605,9 @@ def prepare_final_dataset(
 
 
 def process_final_image(args):
-    src_path, dest_dir, image_index = args
+    src_path, dest_dir, image_index, flipped_image_index = args
     normal_path = os.path.join(dest_dir, '%d.png.npy' % image_index)
-    flipped_path = os.path.join(dest_dir, '%d.png.npy' % (image_index + 1))
+    flipped_path = os.path.join(dest_dir, '%d.png.npy' % flipped_image_index)
 
     cv_image = cv2.imread(src_path)
     cv_image = cv2.resize(cv_image, (320, 240))
