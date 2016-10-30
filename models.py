@@ -140,7 +140,7 @@ class CategoricalModel(BaseModel):
     @classmethod
     def create(cls,
                model_uri,
-               thresholds=[--0.03664, -0.03664],
+               thresholds=[-0.03664, 0.03664],
                input_shape=(120, 320, 3),
                use_adadelta=True,
                learning_rate=0.01,
@@ -168,13 +168,13 @@ class CategoricalModel(BaseModel):
             bias=True))
         model.add(MaxPooling2D(pool_size=(2, 2)))
         model.add(Flatten())
-        model.add(Dropout(0.3))
+        model.add(Dropout(0.5))
         model.add(Dense(
             output_dim=64,
             init='glorot_uniform',
             activation='relu',
             bias=True))
-        model.add(Dropout(0.3))
+        model.add(Dropout(0.5))
         model.add(Dense(
             output_dim=(1 + len(thresholds)),
             init='glorot_uniform',
@@ -188,7 +188,6 @@ class CategoricalModel(BaseModel):
             loss='categorical_crossentropy',
             optimizer=optimizer,
             metrics=['categorical_accuracy'])
-
 
         # Upload the model to designated path
         upload_model(model, model_uri)

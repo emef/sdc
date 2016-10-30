@@ -96,6 +96,8 @@ if __name__ == '__main__':
             'output_uri': 's3://',
             'model_config': CategoricalModel.create(
                 's3://sdc-matt/tmp/' + task_id,
+                use_adadelta=False,
+                learning_rate=0.001,
                 input_shape=(120, 320, 3)),
             'training_args': {
                 'batch_size': 32,
