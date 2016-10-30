@@ -252,7 +252,6 @@ class RegressionModel(BaseModel):
         return {
             'type': RegressionModel.TYPE,
             'model_uri': s3_uri,
-            'thresholds': self.thresholds,
         }
 
     @classmethod
