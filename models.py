@@ -76,18 +76,19 @@ class BaseModel(object):
         raise NotImplemented
 
 
-class SimpleModel(BaseModel):
-    TYPE = 'simple'
+class CategoricalModel(BaseModel):
+    TYPE = 'categorical'
 
     def __init__(self, model_config):
         self.model = load_model_from_uri(model_config['model_uri'])
-        self.cat_classes = model_config.get('cat_classes')
-        self.cat_bins = model_config.get('cat_bins')
+        self.thresholds = model_config.get('thresholds')
+
+        if 'thresholds' not in model_config:
+            logger.warning('Using old-style config, any use other than '
+                           'as an encoder will fail')
 
     def fit(self, dataset, training_args, callbacks=None):
-        if self.cat_classes is not None:
-            dataset = dataset.as_categorical(self.cat_classes)
-
+        dataset = dataset.as_categorical(self.thresholds)
         batch_size = training_args.get('batch_size', 100)
         epoch_size = training_args.get(
             'epoch_size', dataset.get_training_size())
@@ -107,26 +108,14 @@ class SimpleModel(BaseModel):
             callbacks=(callbacks or []))
 
     def evaluate(self, dataset):
-        batch_size = 256
-        testing_size = dataset.get_testing_size()
-        testing_generator = dataset.testing_generator(batch_size)
-        n_batches = testing_size / batch_size
-
-        err_sum = 0.
-        err_count = 0.
-        for _ in xrange(n_batches):
-            X_batch, y_batch = testing_generator.next()
-            y_pred = self.predict_on_batch(X_batch)
-            err_sum += ((y_batch - y_pred) ** 2).sum()
-            err_count += batch_size
-
-        mse = err_sum / err_count
-        return [mse, np.sqrt(mse)]
+        dataset = dataset.as_categorical(self.thresholds)
+        n_testing = dataset.get_testing_size()
+        return  self.model.evaluate_generator(
+            dataset.testing_generator(256),
+            (n_testing / 256) * 256)
 
     def predict_on_batch(self, batch):
-        pred_classes = np.argmax(self.model.predict_on_batch(batch), axis=1)
-        pred_probs = [self.cat_bins[c] for c in pred_classes]
-        return np.array(pred_probs)
+        return self.model.predict_on_batch(batch)
 
     def as_encoder(self):
         # remove the last output layers to retain the feature maps
@@ -139,75 +128,23 @@ class SimpleModel(BaseModel):
         return get_output_dim(self.model)
 
     def save(self, task_id):
-        s3_uri = 's3://sdc-matt/simple/%s/model.h5' % task_id
+        s3_uri = 's3://sdc-matt/categorical/%s/model.h5' % task_id
         upload_model(self.model, s3_uri)
 
         return {
-            'type': SimpleModel.TYPE,
+            'type': CategoricalModel.TYPE,
             'model_uri': s3_uri,
+            'thresholds': self.thresholds,
         }
 
     @classmethod
-    def create_basic(cls,
-                     model_uri,
-                     input_shape=(66, 200, 3),
-                     loss='mean_squared_error',
-                     learning_rate=0.001,
-                     momentum=0.9,
-                     W_l2=0.001):
-        """
-        """
-        sgd = SGD(lr=learning_rate,
-                  momentum=momentum,
-                  nesterov=False)
-
-        # Create the model
-        model = Sequential()
-        model.add(Convolution2D(20, 5, 5,
-            input_shape=input_shape,
-            init= "glorot_uniform",
-            activation='relu',
-            border_mode='same',
-            bias=True))
-        model.add(MaxPooling2D(pool_size=(5, 5)))
-        model.add(Convolution2D(50, 5, 5,
-            init= "glorot_uniform",
-            activation='relu',
-            border_mode='same',
-            bias=True))
-        model.add(MaxPooling2D(pool_size=(5, 5)))
-        model.add(Flatten())
-        model.add(Dropout(0.5))
-        model.add(Dense(
-            output_dim=128,
-            init='glorot_uniform',
-            activation='relu',
-            bias=True))
-        model.add(Dropout(0.5))
-        model.add(Dense(
-            output_dim=1,
-            init='glorot_uniform',
-            W_regularizer=l2(W_l2)))
-
-        model.compile(loss=loss, optimizer=sgd)
-
-        # Upload the model to designated path
-        upload_model(model, model_uri)
-
-        # Return model_config params compatible with constructor
-        return {
-            'type': SimpleModel.TYPE,
-            'model_uri': model_uri
-        }
-
-    @classmethod
-    def create_categorical(cls,
-                           model_uri,
-                           cat_classes,
-                           cat_bins,
-                           input_shape=(160, 160, 3),
-                           learning_rate=0.01,
-                           W_l2=0.0001):
+    def create(cls,
+               model_uri,
+               thresholds=[--0.03664, -0.03664],
+               input_shape=(120, 320, 3),
+               use_adadelta=True,
+               learning_rate=0.01,
+               W_l2=0.0001):
         """
         """
         model = Sequential()
@@ -239,124 +176,28 @@ class SimpleModel(BaseModel):
             bias=True))
         model.add(Dropout(0.3))
         model.add(Dense(
-            output_dim=cat_classes,
+            output_dim=(1 + len(thresholds)),
             init='glorot_uniform',
             W_regularizer=l2(W_l2),
             activation='sigmoid'))
 
+        optimizer = ('adadelta' if use_adadelta
+                     else SGD(lr=learning_rate, momentum=0.9))
+
 	model.compile(
             loss='categorical_crossentropy',
-            optimizer='adadelta',
+            optimizer=optimizer,
             metrics=['categorical_accuracy'])
 
+
         # Upload the model to designated path
         upload_model(model, model_uri)
 
         # Return model_config params compatible with constructor
         return {
-            'type': SimpleModel.TYPE,
+            'type': CategoricalModel.TYPE,
             'model_uri': model_uri,
-            'cat_classes': cat_classes,
-            'cat_bins': cat_bins,
-        }
-
-    @classmethod
-    def create_nvidia(cls,
-                      model_uri,
-                      loss='mean_squared_error',
-                      learning_rate=0.001,
-                      momentum=0.9,
-                      metrics=None):
-        """
-        Create and upload an untrained simple model.
-
-        @param model_uri - path to upload tf model to in s3.
-        @return - model_config dict compatible with SimpleModel.
-        """
-        metrics = metrics or ['mse']
-        sgd = SGD(lr=learning_rate,
-                  momentum=momentum,
-                  nesterov=False)
-
-        # Create the model
-        model = Sequential()
-        model.add(Convolution2D(24, 5, 5,
-                    input_shape=(66, 200, 3),
-                    init= "glorot_uniform",
-                    activation='relu',
-                    border_mode='same',
-                    W_regularizer=l2(0.01),
-                    bias=True))
-        model.add(MaxPooling2D(pool_size=(2, 2)))
-        model.add(Convolution2D(36, 5, 5,
-                    init= "glorot_uniform",
-                    activation='relu',
-                    border_mode='same',
-                    W_regularizer=l2(0.01),
-                    bias=True))
-        model.add(MaxPooling2D(pool_size=(2, 2)))
-        model.add(Convolution2D(48, 5, 5,
-                    init= "glorot_uniform",
-                    activation='relu',
-                    border_mode='same',
-                    W_regularizer=l2(0.01),
-                    bias=True))
-        model.add(MaxPooling2D(pool_size=(2, 2)))
-        model.add(Convolution2D(64, 3, 3,
-                    init= "glorot_uniform",
-                    activation='relu',
-                    border_mode='same',
-                    W_regularizer=l2(0.01),
-                    bias=True))
-        model.add(MaxPooling2D(pool_size=(2, 2)))
-        model.add(Convolution2D(64, 3, 3,
-                    init= "glorot_uniform",
-                    activation='relu',
-                    border_mode='same',
-                    W_regularizer=l2(0.01),
-                    bias=True))
-        model.add(MaxPooling2D(pool_size=(3, 1)))
-        model.add(Flatten())
-        model.add(Dropout(0.5))
-        model.add(Dense(
-            output_dim=1024,
-            init='glorot_uniform',
-            activation='relu',
-            bias=True,
-            W_regularizer=l2(0.1)))
-        model.add(Dropout(0.5))
-        model.add(Dense(
-            output_dim=100,
-            init='glorot_uniform',
-            activation='relu',
-            bias=True,
-            W_regularizer=l2(0.1)))
-        model.add(Dense(
-            output_dim=50,
-            init='glorot_uniform',
-            activation='relu',
-            bias=True,
-            W_regularizer=l2(0.1)))
-        model.add(Dense(
-            output_dim=10,
-            init='glorot_uniform',
-            activation='relu',
-            bias=True,
-            W_regularizer=l2(0.1)))
-        model.add(Dense(
-            output_dim=1,
-            init='glorot_uniform',
-            W_regularizer=l2(0.01)))
-
-        model.compile(loss=loss, optimizer=sgd, metrics=metrics)
-
-        # Upload the model to designated path
-        upload_model(model, model_uri)
-
-        # Return model_config params compatible with constructor
-        return {
-            'type': SimpleModel.TYPE,
-            'model_uri': model_uri
+            'thresholds': thresholds,
         }
 
 
@@ -558,7 +399,8 @@ class EnsembleModel(BaseModel):
 
 
 MODEL_CLASS_BY_TYPE = {
-    SimpleModel.TYPE: SimpleModel,
+    'simple': CategoricalModel,  # backwards compat
+    CategoricalModel.TYPE: CategoricalModel,
     EnsembleModel.TYPE: EnsembleModel,
 }
 
@@ -640,23 +482,3 @@ def get_output_dim(model):
             return layer.output_shape[-1]
 
     raise ValueError('Could not infer output dim')
-
-
-def get_cat_bins(dataset, cat_classes):
-    """
-    Get categorical prediction bins.
-    """
-    training_labels = dataset.get_training_labels()
-    prob = np.arange(0, 1 + 1. / cat_classes, 1. / cat_classes)
-    thresholds = mquantiles(training_labels, prob)
-    print ', '.join('%f' % t for t in prob)
-    print ', '.join('%f' % t for t in thresholds)
-    print training_labels.min(), training_labels.max()
-    cat_bins = []
-    for i in xrange(len(thresholds) - 1):
-        cond = (
-            (training_labels >= thresholds[i])
-            & (training_labels < thresholds[i+1]))
-        cat_bins.append(training_labels[np.where(cond)].mean())
-
-    return cat_bins

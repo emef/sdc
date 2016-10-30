@@ -30,7 +30,7 @@ class Dataset(object):
                  testing_indexes,
                  validation_indexes,
                  image_file_fmt='%d.png.npy',
-                 cat_classes=None):
+                 thresholds=None):
         """
         @param images_base_path - path to image files
         @param labels - 2d array of all label data
@@ -48,16 +48,13 @@ class Dataset(object):
         self.image_file_fmt = image_file_fmt
 
         # If cat_classes specified, map labels to discrete classes
-        if cat_classes is not None:
-            training_labels = labels[training_indexes - 1]
-            prob = np.arange(0, 1, 1. / cat_classes)
-            bins = mquantiles(training_labels, prob)
-            binned_labels = (np.digitize(labels, bins) - 1).astype('float64')
+        if thresholds is not None:
+            binned_labels = (np.digitize(labels, thresholds)).astype('float64')
             self.labels = to_categorical(binned_labels)
         else:
             self.labels = labels
 
-    def as_categorical(self, cat_classes=3):
+    def as_categorical(self, thresholds):
         """
         Return this dataset with categorical, binned labels.
 
@@ -70,7 +67,7 @@ class Dataset(object):
             self.testing_indexes,
             self.validation_indexes,
             self.image_file_fmt,
-            cat_classes)
+            thresholds)
 
     def get_image_shape(self):
         """
@@ -330,7 +327,6 @@ class InfiniteImageLoadingGenerator(object):
                 1 - (np.random.rand(*steps.shape) < self.timestep_dropout)
             ).astype(int)
             samples = np.concatenate((samples, steps), axis=1)
-
 
         return (samples, labels)
 

@@ -70,19 +70,6 @@ def download_file(s3_bucket, s3_key, out_path):
     # use awscli for extra speed
     subprocess.call(['aws', 's3', 'cp', s3_uri, out_path])
 
-
-def download_dir(s3_uri, local_path):
-    """
-    Copy all files in an s3 path to a local directory.
-
-    @param s3_uri - formatted s3://bucket/key/path
-    @param local_path - local path to copy to
-    """
-    if archived_dir_exists(s3_uri):
-        return download_archived_dir(s3_uri, local_path)
-
-    raise NotImplemented
-
 def get_archive_s3_uri(s3_uri):
     """
     Get the archive s3 path for a s3 uri.
@@ -94,29 +81,7 @@ def get_archive_s3_uri(s3_uri):
     s3_key = s3_key.rstrip('/').rstrip('.tar.gz') + '.tar.gz'
     return 's3://%s/%s' % (s3_bucket, s3_key)
 
-def archived_dir_exists(s3_uri):
-    """
-    Determine if an archive version of the s3 dir exists.
-
-    @param s3_uri - formatted s3://bucket/dir
-    @return - true if .tar.gz archive exists for this s3 uri.
-    """
-    s3_uri = get_archive_s3_uri(s3_uri)
-    return key_exists(s3_uri)
-
-def key_exists(s3_uri):
-    """
-    Determine if s3 key exists.
-
-    @param s3_uri - formatted s3://bucket/key/path
-    @return - true if s3 key exists
-    """
-    s3_bucket, s3_key = parse_s3_uri(s3_uri)
-    conn = S3Connection(*aws_credentials())
-    bucket = Bucket(connection=conn, name=s3_bucket)
-    return bucket.get_key(s3_key) is not None
-
-def download_archived_dir(s3_uri, local_path):
+def download_dir(s3_uri, local_path):
     """
     Download an archived (.tar.gz) directory from s3.
 
