@@ -12,6 +12,7 @@ from keras.models import load_model as keras_load_model
 from keras.optimizers import SGD
 from keras.regularizers import l2
 import numpy as np
+from scipy.stats.mstats import mquantiles
 
 from util import download_file, parse_s3_uri, upload_file
 
@@ -81,6 +82,7 @@ class SimpleModel(BaseModel):
     def __init__(self, model_config):
         self.model = load_model_from_uri(model_config['model_uri'])
         self.cat_classes = model_config.get('cat_classes')
+        self.cat_bins = model_config.get('cat_bins')
 
     def fit(self, dataset, training_args, callbacks=None):
         if self.cat_classes is not None:
@@ -105,18 +107,26 @@ class SimpleModel(BaseModel):
             callbacks=(callbacks or []))
 
     def evaluate(self, dataset):
-        if self.cat_classes is not None:
-            dataset = dataset.as_categorical(self.cat_classes)
+        batch_size = 256
+        testing_size = dataset.get_testing_size()
+        testing_generator = dataset.testing_generator(batch_size)
+        n_batches = testing_size / batch_size
 
-        n_testing = dataset.get_testing_size()
-        evaluation = self.model.evaluate_generator(
-            dataset.testing_generator(256),
-            (n_testing / 256) * 256)
+        err_sum = 0.
+        err_count = 0.
+        for _ in xrange(n_batches):
+            X_batch, y_batch = testing_generator.next()
+            y_pred = self.predict_on_batch(X_batch)
+            err_sum += ((y_batch - y_pred) ** 2).sum()
+            err_count += batch_size
 
-        return evaluation
+        mse = err_sum / err_count
+        return [mse, np.sqrt(mse)]
 
     def predict_on_batch(self, batch):
-        return self.model.predict_on_batch(batch)
+        pred_classes = np.argmax(self.model.predict_on_batch(batch), axis=1)
+        pred_probs = [self.cat_bins[c] for c in pred_classes]
+        return np.array(pred_probs)
 
     def as_encoder(self):
         # remove the last output layers to retain the feature maps
@@ -194,6 +204,7 @@ class SimpleModel(BaseModel):
     def create_categorical(cls,
                            model_uri,
                            cat_classes,
+                           cat_bins,
                            input_shape=(160, 160, 3),
                            learning_rate=0.01,
                            W_l2=0.0001):
@@ -235,7 +246,7 @@ class SimpleModel(BaseModel):
 
 	model.compile(
             loss='categorical_crossentropy',
-            optimizer=SGD(lr=learning_rate, momentum=0.9),
+            optimizer='adadelta',
             metrics=['categorical_accuracy'])
 
         # Upload the model to designated path
@@ -246,6 +257,7 @@ class SimpleModel(BaseModel):
             'type': SimpleModel.TYPE,
             'model_uri': model_uri,
             'cat_classes': cat_classes,
+            'cat_bins': cat_bins,
         }
 
     @classmethod
@@ -419,12 +431,20 @@ class EnsembleModel(BaseModel):
         err_count = 0.
         for _ in xrange(n_batches):
             X_batch, y_batch = testing_generator.next()
-            transformed_batch = self.input_model.predict_on_batch(X_batch)
-            for i in xrange(batch_size):
-                y_pred = predictor(transformed_batch[i])
-                y_true = y_batch[i]
-                err_sum += (y_true - y_pred) ** 2
-                err_count += 1
+
+            if self.timesteps == 0:
+                y_pred = self.predict_on_batch(X_batch)
+                err_sum += ((y_batch - y_pred) ** 2).sum()
+                err_count += batch_size
+            else:
+                for i in xrange(batch_size):
+                    transformed_batch = (self
+                        .input_model
+                        .predict_on_batch(X_batch))
+                    y_pred = predictor(transformed_batch[i])
+                    y_true = y_batch[i]
+                    err_sum += (y_true - y_pred) ** 2
+                    err_count += 1
 
         mse = err_sum / err_count
         return [mse, np.sqrt(mse)]
@@ -620,3 +640,23 @@ def get_output_dim(model):
             return layer.output_shape[-1]
 
     raise ValueError('Could not infer output dim')
+
+
+def get_cat_bins(dataset, cat_classes):
+    """
+    Get categorical prediction bins.
+    """
+    training_labels = dataset.get_training_labels()
+    prob = np.arange(0, 1 + 1. / cat_classes, 1. / cat_classes)
+    thresholds = mquantiles(training_labels, prob)
+    print ', '.join('%f' % t for t in prob)
+    print ', '.join('%f' % t for t in thresholds)
+    print training_labels.min(), training_labels.max()
+    cat_bins = []
+    for i in xrange(len(thresholds) - 1):
+        cond = (
+            (training_labels >= thresholds[i])
+            & (training_labels < thresholds[i+1]))
+        cat_bins.append(training_labels[np.where(cond)].mean())
+
+    return cat_bins

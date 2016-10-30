@@ -3,10 +3,14 @@ Loading/saving datasets.
 """
 import logging, multiprocessing, os, shutil, subprocess, traceback
 
-import cv2
+# only needed for generating datasets
+try:
+    import cv2
+    import pandas as pd
+except: pass
+
 from keras.utils.np_utils import to_categorical
 import numpy as np
-import pandas as pd
 import requests
 from scipy.stats.mstats import mquantiles
 

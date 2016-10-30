@@ -10,7 +10,8 @@ import numpy as np
 import tensorflow as tf
 
 from models import (
-    load_from_config, upload_model, EnsembleModel, SimpleModel)
+    get_cat_bins, load_from_config, upload_model,
+    EnsembleModel, SimpleModel)
 from datasets import load_dataset
 
 logger = logging.getLogger(__name__)
@@ -89,23 +90,26 @@ if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
     task_id = str(int(time.time()))
 
-    if False:
+    if True:
+        dataset = load_dataset('s3://sdc-matt/datasets/final_training')
+        cat_classes = 9
+        cat_bins = get_cat_bins(dataset, cat_classes)
         sample_task = {
             'task_id': task_id,
             'dataset_uri': 's3://sdc-matt/datasets/final_training',
             'output_uri': 's3://',
             'model_config': SimpleModel.create_categorical(
                 's3://sdc-matt/tmp/' + task_id,
-                cat_classes=5,
-                learning_rate=0.01,
+                cat_classes=cat_classes,
+                cat_bins=cat_bins,
                 input_shape=(120, 320, 3)),
             'training_args': {
                 'batch_size': 32,
-                'epochs': 50,
+                'epochs': 25,
             },
         }
 
-    if True:
+    if False:
         input_model_config = {
             'model_uri': 's3://sdc-matt/simple/1477715388/model.h5',
             'type': 'simple',
