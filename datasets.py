@@ -649,9 +649,8 @@ def prepare_thresholded_dataset(src_path,
 
     indexes = np.arange(1, len(labels) + 1)
     indexes = indexes[np.where(cond)[0]]
-    labels = labels[np.where(cond)[0]]
 
-    logger.info('%d samples after applying thresholds', len(labels))
+    logger.info('%d samples after applying thresholds', len(indexes))
 
     if sample_region is not None:
         lb, ub = sample_region
