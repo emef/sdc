@@ -75,20 +75,21 @@ def handle_task(task, datasets_dir):
                 baseline_mse, training_mse, improvement * 100)
     logger.info('output config: %s' % output_config)
 
-    example_ranges = 10
-    range_size = 20
-    testing_size = dataset.get_testing_size()
-    for _ in xrange(example_ranges):
-        # print out some sample prediction/label pairs
-        skip_to = int(np.random.random() * (testing_size - range_size))
-        example_images, example_labels = (dataset
-            .sequential_generator(range_size)
-            .skip(skip_to)
-            .next())
+    if model.output_dim() == 1:
+        example_ranges = 10
+        range_size = 20
+        testing_size = dataset.get_testing_size()
+        for _ in xrange(example_ranges):
+            # print out some sample prediction/label pairs
+            skip_to = int(np.random.random() * (testing_size - range_size))
+            example_images, example_labels = (dataset
+                .sequential_generator(range_size)
+                .skip(skip_to)
+                .next())
 
-        predictions = model.predict_on_batch(example_images)
-        for pred, label in zip(predictions, example_labels):
-            logger.info('p=%.5f  l=%.5f', pred, label)
+            predictions = model.predict_on_batch(example_images)
+            for pred, label in zip(predictions, example_labels):
+                logger.info('p=%.5f  l=%.5f', pred, label)
 
 
 if __name__ == '__main__':
