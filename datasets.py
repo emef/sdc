@@ -626,6 +626,7 @@ def prepare_thresholded_dataset(src_path,
                                 local_output_path,
                                 min_threshold=None,
                                 max_threshold=None,
+                                sample_region=None,
                                 training_percent=0.7,
                                 testing_percent=0.2,
                                 validation_percent=0.1):
@@ -638,6 +639,7 @@ def prepare_thresholded_dataset(src_path,
         os.path.join(local_output_path, 'images')])
 
     labels = np.load(os.path.join(src_path, 'labels.npy'))
+    logger.info('%d samples in original dataset', len(labels))
 
     cond = (labels > -99999999)  # hack;
     if min_threshold is not None:
@@ -645,10 +647,27 @@ def prepare_thresholded_dataset(src_path,
     if max_threshold is not None:
         cond &= (labels <= max_threshold)
 
-    all_indexes = np.arange(1, len(labels) + 1)
-    indexes = all_indexes[np.where(cond)[0]]
-    np.random.shuffle(indexes)
+    indexes = np.arange(1, len(labels) + 1)
+    indexes = indexes[np.where(cond)[0]]
+    labels = labels[np.where(cond)[0]]
 
+    logger.info('%d samples after applying thresholds', len(labels))
+
+    if sample_region is not None:
+        lb, ub = sample_region
+        cond = (labels >= lb) & (labels <= ub)
+        in_region = indexes[np.where(cond)[0]]
+        out_region = indexes[np.where(~cond)[0]]
+        target_size = len(out_region)
+        in_region = np.random.choice(in_region, target_size, replace=False)
+        indexes = np.concatenate((in_region, out_region))
+
+        logger.info('%d samples in region, %d outside',
+                    len(in_region), len(out_region))
+
+    logger.info('Final dataset size %d', len(indexes))
+
+    np.random.shuffle(indexes)
     n_samples = len(indexes)
     n_training = int(training_percent * n_samples)
     n_testing = int(testing_percent * n_samples)
@@ -669,9 +688,6 @@ def prepare_thresholded_dataset(src_path,
     np.save(
         os.path.join(local_output_path, 'validation_indexes.npy'),
         validation_indexes)
-
-
-
 
 
 if __name__ == '__main__':

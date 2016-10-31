@@ -75,8 +75,6 @@ def handle_task(task, datasets_dir):
                 baseline_mse, training_mse, improvement * 100)
     logger.info('output config: %s' % output_config)
 
-    return
-
     example_ranges = 10
     range_size = 20
     testing_size = dataset.get_testing_size()
@@ -102,16 +100,16 @@ if __name__ == '__main__':
         task = {
             'task_id': task_id,
             'score_metric': 'rmse',
-            'dataset_uri': 's3://sdc-matt/datasets/final_training',
+            'dataset_uri': 's3://sdc-matt/datasets/final_training_left_sampled',
             'output_uri': 's3://',
             'model_config': RegressionModel.create(
                 's3://sdc-matt/tmp/' + task_id,
-                use_adadelta=True,
+                use_adadelta=False,
                 learning_rate=0.001,
                 input_shape=(120, 320, 3)),
             'training_args': {
                 'batch_size': 64,
-                'epochs': 50,
+                'epochs': 10,
             },
         }
 

@@ -296,8 +296,7 @@ class RegressionModel(BaseModel):
         model.add(Dense(
             output_dim=1,
             init='glorot_uniform',
-            W_regularizer=l2(W_l2),
-            activation='sigmoid'))
+            W_regularizer=l2(W_l2))
 
         optimizer = ('adadelta' if use_adadelta
                      else SGD(lr=learning_rate, momentum=0.9))
