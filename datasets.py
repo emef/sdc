@@ -653,8 +653,9 @@ def prepare_thresholded_dataset(src_path,
     logger.info('%d samples after applying thresholds', len(indexes))
 
     if sample_region is not None:
+        new_labels = labels[np.where(cond)[0]]
         lb, ub = sample_region
-        cond = (labels >= lb) & (labels <= ub)
+        cond = (new_labels >= lb) & (new_labels <= ub)
         in_region = indexes[np.where(cond)[0]]
         out_region = indexes[np.where(~cond)[0]]
         target_size = len(out_region)
