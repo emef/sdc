@@ -38,5 +38,7 @@ sudo mount /dev/sda1 /media/drive
 NOTE: The device name could be different, if mounting /dev/sda1 fails, inspect the outout of cat /proc/partitions to mount the correct device.
 
 ### Encoding images in a directory into a video
+```
 cd directory_with_images/
 mencoder "mf://*.png" -mf type=png:fps=20 -o /home/ubuntu/output-steering-reg.mpg -speed 1 -ofps 20 -ovc lavc -lavcopts vcodec=mpeg2video:vbitrate=2500 -oac copy -of mpeg
+```
