@@ -100,7 +100,7 @@ if __name__ == '__main__':
     if True:
         task = {
             'task_id': task_id,
-            'score_metric': 'rmse',
+            'score_metric': 'val_rmse',
             'dataset_uri': 's3://sdc-matt/datasets/final_training_left_sampled',
             'output_uri': 's3://',
             'model_config': RegressionModel.create(
