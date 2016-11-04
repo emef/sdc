@@ -5,45 +5,16 @@ model, validates it, and writes the results to the db.
 import logging, time
 
 from keras.backend import binary_crossentropy
-from keras.callbacks import Callback
 import numpy as np
 import tensorflow as tf
 
+from callbacks import SnapshotCallback
 from models import (
     load_from_config, upload_model,
     CategoricalModel, EnsembleModel, LstmModel, RegressionModel)
 from datasets import load_dataset
 
 logger = logging.getLogger(__name__)
-
-
-class SnapshotCallback(Callback):
-    """
-    Callback which saves the model snapshot to s3 on each epoch
-    """
-    def __init__(self,
-                 model_to_save,
-                 task_id,
-                 only_keep_best=True,
-                 score_metric='val_categorical_accuracy'):
-        self.model_to_save = model_to_save
-        self.task_id = task_id
-        self.only_keep_best = only_keep_best
-        self.score_metric = score_metric
-        self.best = None
-
-    def on_epoch_end(self, epoch, logs):
-        if self.only_keep_best:
-            score = logs.get(self.score_metric)
-            if self.best is None or score > self.best:
-                self.best = score
-            else:
-                logger.info(
-                    'Not snapshotting: %.2f less than previous %.2f',
-                    score, self.best)
-                return
-
-        self.model_to_save.save(task_id)
 
 
 def handle_task(task, datasets_dir):

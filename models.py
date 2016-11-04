@@ -228,6 +228,8 @@ class RegressionModel(BaseModel):
             verbose=1,
             callbacks=(callbacks or []))
 
+        return history
+
     def evaluate(self, dataset):
         n_testing = dataset.get_testing_size()
         return  self.model.evaluate_generator(
