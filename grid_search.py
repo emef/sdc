@@ -2,7 +2,7 @@
 Run a gridsearch on some model config.
 
 * convolution layer parameters
-  - nb filters [>= prev layer]
+  - nb filters
   - filter size
   - pooling
   - dropout
@@ -30,12 +30,19 @@ from models import upload_model, RegressionModel
 
 
 class BaseParameter(object):
+    """
+    Parameter which has predefined values which it can take on.
+    """
+
     def expand(self):
         """Return all possible values of this parameter"""
         raise NotImplemented()
 
 
-class Parameter(BaseParameter):
+class RangeParameter(BaseParameter):
+    """
+    Parameter which takes a value in a range with equal-valued steps.
+    """
     def __init__(self,
                  min_value,
                  max_value,
@@ -52,6 +59,9 @@ class Parameter(BaseParameter):
 
 
 class ChoiceParameter(BaseParameter):
+    """
+    Parameter with fixed choice of parameters.
+    """
     def __init__(self, choices):
         self.choices = choices
 
@@ -60,6 +70,22 @@ class ChoiceParameter(BaseParameter):
 
 
 class ParameterSpace(object):
+    """
+    Contains a set of parameters and can map a vector to/from
+    the projected parameter space.
+
+    Suppose we have a parameter which expands to possible values
+    [0, 5, 6, 11]. You can map a value in [0, 1] to this parameter
+    space by using equal size bins on the [0, 1] interval [0.25, 0.5, 0.75].
+
+    Examples:
+      in   -> out
+      0.99 -> 11
+      0.01 -> 0
+      0.76 -> 11
+      0.73 -> 6
+    """
+
     def __init__(self, parameters):
         """
         @param parameters - (name, parameter) pairs
@@ -117,13 +143,13 @@ class ConvLayer(Layer):
                  delta_dropout=0.2):
 
         self.parameters = ParameterSpace((
-            ('nb_filters', Parameter(
+            ('nb_filters', RangeParameter(
                 min_nb_filters, max_nb_filters, delta_nb_filters)),
-            ('filter_dim', Parameter(
+            ('filter_dim', RangeParameter(
                 min_filter_dim, max_filter_dim, delta_filter_dim)),
-            ('pool_dim', Parameter(
+            ('pool_dim', RangeParameter(
                 min_pool_dim, max_pool_dim, delta_pool_dim)),
-            ('dropout', Parameter(
+            ('dropout', RangeParameter(
                 min_dropout, max_dropout, delta_dropout)),
         ))
 
@@ -154,9 +180,9 @@ class DenseLayer(Layer):
                  max_dropout=0.8,
                  delta_dropout=0.2):
         self.parameters = ParameterSpace((
-            ('output_dim', Parameter(
+            ('output_dim', RangeParameter(
                 min_output_dim, max_output_dim, delta_output_dim)),
-            ('dropout', Parameter(
+            ('dropout', RangeParameter(
                 min_dropout, max_dropout, delta_dropout)),
             ('W_l2', ChoiceParameter((0, 0.1, 0.01, 0.001, 0.0001))),
         ))
@@ -206,17 +232,11 @@ class FlattenLayer(Layer):
 
 class Topology(object):
     def __init__(self, name, layers, input_shape, output_dim):
-        # append the output layer
-        layers = tuple(layers) + (OutputLayer(output_dim), )
-
         self.name = name
         self.input_shape = input_shape
-        self.layers = layers
-        self.parameter_sizes = [
-            layer.get_parameter_space().size()
-            for layer in layers]
 
-        self.size = sum(self.parameter_sizes)
+        # append the output layer
+        self.layers = tuple(layers) + (OutputLayer(output_dim), )
 
     def random_model(self):
         input_shape = self.input_shape
@@ -232,6 +252,7 @@ class Topology(object):
             layer_params[layer_name] = dict(zip(space.names, params))
 
         return model, layer_params
+
 
 topologies = {
     '2conv-1dense': Topology(
@@ -273,7 +294,7 @@ if __name__ == '__main__':
                         help='Where to read/write model output to')
     parser.add_argument('--duration', type=int, default=20,
                         help='Duration to train before early stopping')
-    parser.add_argument('--max_params', type=int, default=20000000,
+    parser.add_argument('--max_params', type=int, default=1000000,
                         help='Max # params to consider training')
     parser.add_argument('--dataset_uri', type=str,
                         default='s3://sdc-matt/datasets/final_training',
@@ -314,10 +335,13 @@ if __name__ == '__main__':
             history = model.fit(dataset, training_args, callbacks=callbacks)
             model_config = model.save(task_id)
 
+            test_loss = model.evaluate(dataset)
+
             output = {
                 'topology': topology.name,
                 'dataset_uri': dataset_uri,
-                'loss': history.history['val_loss'][-1],
+                'val_loss': history.history['val_loss'][-1],
+                'test_loss': test_loss,
                 'history': history.history,
                 'model_config': model_config,
                 'gridsearch_params': gridsearch_params,
