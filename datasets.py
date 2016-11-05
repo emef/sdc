@@ -378,31 +378,11 @@ class InfiniteImageLoadingGenerator(object):
 
 
 class PrefetchingImageLoadingGenerator(object):
-    def __init__(self, child_generator, batch_size, X_shape, y_shape):
-        X_size = batch_size * reduce(lambda a,b: a * b, X_shape)
-        y_size = batch_size * reduce(lambda a,b: a * b, y_shape)
-
-        self.batch_size = batch_size
-        self.X_shape = X_shape
-        self.y_shape = y_shape
-        self.start_sem = multiprocessing.Semaphore(0)
-        self.ready_sem = multiprocessing.Semaphore(0)
-        self.buf0_X = multiprocessing.Array('d', X_size)
-        self.buf0_y = multiprocessing.Array('d', y_size)
-        self.buf1_X = multiprocessing.Array('d', X_size)
-        self.buf1_y = multiprocessing.Array('d', y_size)
-        self.buf_no = multiprocessing.Value('i')
+    def __init__(self, child_generator, max_queued):
+        self.queue = multiprocessing.Queue(max_queue)
         self.prefetcher = multiprocessing.Process(
             target=image_prefetcher,
-            args=(child_generator,
-                  self.start_sem,
-                  self.ready_sem,
-                  self.buf0_X,
-                  self.buf0_y,
-                  self.buf1_X,
-                  self.buf1_y,
-                  self.buf_no))
-
+            args=(child_generator, self.queue))
         self.prefetcher.daemon = True
         self.prefetcher.start()
 
@@ -410,41 +390,12 @@ class PrefetchingImageLoadingGenerator(object):
         return self
 
     def next(self):
-        self.ready_sem.acquire()
+        return self.queue.get()
 
-        cur_buf_no = self.buf_no.value
-        if cur_buf_no == 0:
-            X, y = self.buf0_X, self.buf0_y
-        else:
-            X, y = self.buf1_X, self.buf1_y
 
-        self.buf_no.value = not cur_buf_no  # toggle 1, 0, 1, ..
-
-        self.start_sem.release()
-
-        X = np.frombuffer(X.get_obj()).reshape([self.batch_size] + self.X_shape)
-        y = np.frombuffer(y.get_obj()).reshape([self.batch_size] + self.y_shape)
-
-        return X, y
-
-def image_prefetcher(child_generator,
-                     start_sem,
-                     ready_sem,
-                     buf0_X,
-                     buf0_y,
-                     buf1_X,
-                     buf1_y,
-                     buf_no):
-    while True:
-        X, y = child_generator.next()
-        cur_buf_no = buf_no.value
-        buf_X = buf0_X if cur_buf_no == 0 else buf1_X
-        buf_y = buf0_y if cur_buf_no == 0 else buf1_y
-        buf_X[:] = X.reshape(reduce(lambda a, b: a * b, X.shape))
-        buf_y[:] = y.reshape(reduce(lambda a, b: a * b, y.shape))
-
-        ready_sem.release()
-        start_sem.acquire()
+def image_prefetcher(child_generator, queue):
+    while not queue.full():
+        queue.put(child_generator.next())
 
 
 def load_image(index, images_base_path, image_file_fmt):
