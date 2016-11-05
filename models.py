@@ -220,7 +220,7 @@ class RegressionModel(BaseModel):
         self.model.summary()
 
         history = self.model.fit_generator(
-            dataset.training_generator(batch_size),
+            dataset.training_generator(batch_size).with_prefetching(),
             validation_data=dataset.validation_generator(batch_size),
             samples_per_epoch=epoch_size,
             nb_val_samples=validation_size,
