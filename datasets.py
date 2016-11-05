@@ -234,6 +234,8 @@ class InfiniteImageLoadingGenerator(object):
         self.label_shape = ([1] if len(self.labels.shape) == 1
                             else list(self.labels.shape[1:]))
 
+        self.lock = multiprocessing.RLock()
+
     def with_prefetching(self, max_queued=100):
         return PrefetchingImageLoadingGenerator(self, max_queued)
 
@@ -324,6 +326,9 @@ class InfiniteImageLoadingGenerator(object):
             self.current_index += n
 
     def next(self):
+        with self.lock:
+            next_indexes = [self.incr_index() for _ in xrange(self.batch_size)]
+
         default_prev = 0
         samples = np.empty([self.batch_size] + self.image_shape)
         labels = np.empty([self.batch_size] + self.label_shape)
@@ -332,7 +337,7 @@ class InfiniteImageLoadingGenerator(object):
         elif self.generator_type == 'timestepped_images':
             steps = np.empty([self.batch_size] + [self.timesteps] + self.image_shape)
 
-        for i in xrange(self.batch_size):
+        for i, next_image_index in enumerate(next_indexes):
             next_image_index = self.indexes[self.current_index]
 
             image = self.load_image(next_image_index)
@@ -354,8 +359,6 @@ class InfiniteImageLoadingGenerator(object):
                     if 0 <= step_index <= next_label_index:
                         steps[i, self.timesteps - step - 1, :, :, :] = self.load_image(step_index + 1)
 
-            self.incr_index()
-
         if self.transform_model is not None:
             samples = self.transform_model.predict_on_batch(samples)
 
@@ -374,13 +377,16 @@ class InfiniteImageLoadingGenerator(object):
 
 
 class PrefetchingImageLoadingGenerator(object):
-    def __init__(self, child_generator, max_queued):
+    def __init__(self, child_generator, max_queued, processes=4):
         self.queue = multiprocessing.Queue(max_queued)
-        self.prefetcher = multiprocessing.Process(
-            target=image_prefetcher,
-            args=(child_generator, self.queue))
-        self.prefetcher.daemon = True
-        self.prefetcher.start()
+        self.processes = []
+
+        for _ in xrange(processes):
+            prefetcher = multiprocessing.Process(
+                target=image_prefetcher,
+                args=(child_generator, self.queue))
+            prefetcher.daemon = True
+            prefetcher.start()
 
     def __iter__(self):
         return self
