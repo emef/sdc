@@ -234,12 +234,8 @@ class InfiniteImageLoadingGenerator(object):
         self.label_shape = ([1] if len(self.labels.shape) == 1
                             else list(self.labels.shape[1:]))
 
-    def with_prefetching(self):
-        return PrefetchingImageLoadingGenerator(
-            self,
-            self.batch_size,
-            self.image_shape,
-            self.label_shape)
+    def with_prefetching(self, max_queued=100):
+        return PrefetchingImageLoadingGenerator(self, max_queued)
 
     def with_transform(self,
                        transform_model,
@@ -379,7 +375,7 @@ class InfiniteImageLoadingGenerator(object):
 
 class PrefetchingImageLoadingGenerator(object):
     def __init__(self, child_generator, max_queued):
-        self.queue = multiprocessing.Queue(max_queue)
+        self.queue = multiprocessing.Queue(max_queued)
         self.prefetcher = multiprocessing.Process(
             target=image_prefetcher,
             args=(child_generator, self.queue))
