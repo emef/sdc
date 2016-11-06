@@ -588,7 +588,7 @@ class LstmModel(BaseModel):
         return [mse]
 
     def predict_on_batch(self, batch):
-        inputs = np.empty([len(batch)] + [self.timesteps+1] + list(batch[0].shape))
+        inputs = np.empty([len(batch)] + [self.timesteps] + list(batch[0].shape))
         for index in xrange(len(batch)):
             for step in xrange(self.timesteps):
                 if (index - step) >= 0:
@@ -617,6 +617,21 @@ class LstmModel(BaseModel):
       momentum=0.9,
       W_l2=0.001,
       metrics=None):
+        """
+        Creates an LstmModel using a model in the input_model_config
+
+        @param model_uri - s3 uri to save the model
+        @param input_model_config - model to use as the input time distributed layer
+                                  in the lstm
+        @param input_shape - timestepped shape (timesteps, feature dims)
+        @param timesteps - timesteps inclusive of the current frame
+                         (10 - current frame + 9 previous frames)
+        @param loss - loss function on the model
+        @param learning - learning rate parameter on the model
+        @param momentum - learning momentum
+        @param W_l2 - W_l2 regularization param
+        @param metrics - metrics to track - (rmse, mse...)
+        """
 
         input_model = load_from_config(input_model_config).as_encoder()
         metrics = metrics or ['mse']
