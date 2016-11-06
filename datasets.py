@@ -198,6 +198,7 @@ class InfiniteImageLoadingGenerator(object):
                  images_base_path,
                  image_file_fmt,
                  shuffle_on_exhaust,
+                 pctl_sampling='none',
                  timesteps=0,
                  timestep_noise=0,
                  timestep_dropout=0,
@@ -210,6 +211,7 @@ class InfiniteImageLoadingGenerator(object):
         @param images_base_path - local path to image directory
         @param image_file_fmt - format string for image filenames
         @param shuffle_on_exhaust - should shuffle data on each full pass
+        @param pctl_sampling - type of percentile sampling.
         @param timesteps - appends this many previous labels to end of samples
         @param timestep_noise - +/- random noise factor
         @param timestep_dropout - % change to drop a prev label
@@ -221,10 +223,18 @@ class InfiniteImageLoadingGenerator(object):
         self.images_base_path = images_base_path
         self.image_file_fmt = image_file_fmt
         self.shuffle_on_exhaust = shuffle_on_exhaust
+        self.pctl_sampling = pctl_sampling
         self.timesteps = timesteps
         self.timestep_noise = timestep_noise
         self.timestep_dropout = timestep_dropout
         self.transform_model = transform_model
+
+        if pctl_sampling != 'none':
+            these_labels = labels[indexes - 1]
+            percentiles = mquantiles(these_labels, np.arange(0.0, 1.01, 0.01))
+            self.pctl_indexes = filter(len, [
+                indexes[np.where((these_labels >= lb) & (these_labels < ub))[0]]
+                for lb, ub in zip(percentiles[:-1], percentiles[1:])])
 
         assert generator_type in self.GENERATOR_TYPE
         self.generator_type = generator_type
@@ -233,6 +243,28 @@ class InfiniteImageLoadingGenerator(object):
         self.image_shape = list(self.load_image(self.indexes[0]).shape)
         self.label_shape = ([1] if len(self.labels.shape) == 1
                             else list(self.labels.shape[1:]))
+
+    def with_percentile_sampling(self, sampling_type='uniform'):
+        """
+        Performs some sampling on the labels used in each batch. Types
+        of sampling are:
+
+          uniform - each batch will have equal representation of label pctl
+          same - each batch will be from the same label pctl
+          none - default, no sampling
+        """
+        return InfiniteImageLoadingGenerator(
+            batch_size=self.batch_size,
+            indexes=self.indexes,
+            labels=self.labels,
+            images_base_path=self.images_base_path,
+            image_file_fmt=self.image_file_fmt,
+            shuffle_on_exhaust=self.shuffle_on_exhaust,
+            pctl_sampling=sampling_type,
+            timesteps=self.timesteps,
+            timestep_noise=self.timestep_noise,
+            timestep_dropout=self.timestep_dropout,
+            transform_model=self.transform_model)
 
     def with_transform(self,
                        transform_model,
@@ -255,6 +287,7 @@ class InfiniteImageLoadingGenerator(object):
             images_base_path=self.images_base_path,
             image_file_fmt=self.image_file_fmt,
             shuffle_on_exhaust=self.shuffle_on_exhaust,
+            pctl_sampling=self.pct_sampling,
             timesteps=timesteps,
             timestep_noise=timestep_noise,
             timestep_dropout=timestep_dropout,
@@ -281,6 +314,7 @@ class InfiniteImageLoadingGenerator(object):
             images_base_path=self.images_base_path,
             image_file_fmt=self.image_file_fmt,
             shuffle_on_exhaust=self.shuffle_on_exhaust,
+            pctl_sampling=self.pct_sampling,
             timesteps=timesteps,
             timestep_noise=timestep_noise,
             timestep_dropout=timestep_dropout,
@@ -320,6 +354,8 @@ class InfiniteImageLoadingGenerator(object):
         else:
             self.current_index += n
 
+        return self.current_index
+
     def next(self):
         default_prev = 0
         samples = np.empty([self.batch_size] + self.image_shape)
@@ -329,9 +365,24 @@ class InfiniteImageLoadingGenerator(object):
         elif self.generator_type == 'timestepped_images':
             steps = np.empty([self.batch_size] + [self.timesteps] + self.image_shape)
 
-        for i in xrange(self.batch_size):
-            next_image_index = self.indexes[self.current_index]
+        if self.pctl_sampling == 'none':
+            next_indexes = [
+                self.indexes[self.incr_index()]
+                for _ in xrange(self.batch_size)]
+        elif self.pctl_sampling == 'uniform':
+            max_bins = max(self.batch_size, len(self.pctl_indexes))
+            per_bin = self.batch_size / max_bins
+            index_bins = np.random.choice(self.pctl_indexes, max_bins)
+            next_indexes = []
+            for index_bin in index_bins:
+                remaining = self.batch_size - len(next_indexes)
+                for_this_bin = min(remaining, per_bin)
+                next_indexes.extend(np.random.choice(index_bin, for_this_bin))
 
+        else:
+            raise NotImplementedError
+
+        for i, next_image_index in enumerate(next_indexes):
             image = self.load_image(next_image_index)
             # image indexes are 1-indexed
             next_label_index = next_image_index - 1
@@ -693,8 +744,5 @@ def prepare_thresholded_dataset(src_path,
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
 
-    if False:
-        prepare_dataset(
-            'https://s3-us-west-1.amazonaws.com/sdc-datasets/sdc_dataset_1.tar.gz',
-            '/tmp/sdc_processed_1',
-            's3://sdc-matt/datasets/sdc_processed_1')
+    dataset = load_dataset('s3://sdc-matt/datasets/sdc_processed_1')
+    dataset.training_generator().with_percentile_sampling('uniform')

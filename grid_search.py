@@ -329,6 +329,8 @@ if __name__ == '__main__':
             # TODO: grid search should be able to vary the training args
             training_args = {
                 'epochs': 10000,  # let early stop callback end training
+                'batch_size': 100,
+                'percentile_sampling': 'uniform',
             }
 
             callbacks = [TimedEarlyStopping(args.duration)]

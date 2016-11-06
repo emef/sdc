@@ -219,8 +219,14 @@ class RegressionModel(BaseModel):
 
         self.model.summary()
 
+        training_generator = dataset.training_generator(batch_size)
+        if 'percentile_sampling' in training_args:
+            sampling_type = training_args['percentile_sampling']
+            training_generator = (training_generator
+                .with_percentile_sampling(sampling_type))
+
         history = self.model.fit_generator(
-            dataset.training_generator(batch_size),
+            training_generator,
             validation_data=dataset.validation_generator(batch_size),
             samples_per_epoch=epoch_size,
             nb_val_samples=validation_size,

@@ -82,6 +82,7 @@ if __name__ == '__main__':
             'training_args': {
                 'batch_size': 64,
                 'epochs': 10,
+                'percentile_sampling': 'uniform',
             },
         }
 
