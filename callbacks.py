@@ -28,7 +28,7 @@ class SnapshotCallback(Callback):
                     score, self.best)
                 return
 
-        self.model_to_save.save(task_id)
+        self.model_to_save.save(self.task_id)
 
 
 class TimedEarlyStopping(Callback):
