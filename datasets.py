@@ -378,6 +378,11 @@ class InfiniteImageLoadingGenerator(object):
                 remaining = self.batch_size - len(next_indexes)
                 for_this_bin = min(remaining, per_bin)
                 next_indexes.extend(np.random.choice(index_bin, for_this_bin))
+        elif self.pctl_sampling == 'same':
+            chosen_bin = np.random.choice(self.pctl_indexes, 1)[0]
+            with_replacement = len(chosen_bin) < self.batch_size
+            next_indexes = np.random.choice(
+                chosen_bin, self.batch_size, with_replacement)
 
         else:
             raise NotImplementedError
