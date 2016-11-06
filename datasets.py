@@ -371,7 +371,7 @@ class InfiniteImageLoadingGenerator(object):
                 for _ in xrange(self.batch_size)]
         elif self.pctl_sampling == 'uniform':
             max_bins = max(self.batch_size, len(self.pctl_indexes))
-            per_bin = self.batch_size / max_bins
+            per_bin = max(self.batch_size / max_bins, 1)
             index_bins = np.random.choice(self.pctl_indexes, max_bins)
             next_indexes = []
             for index_bin in index_bins:
@@ -384,6 +384,7 @@ class InfiniteImageLoadingGenerator(object):
 
         for i, next_image_index in enumerate(next_indexes):
             image = self.load_image(next_image_index)
+
             # image indexes are 1-indexed
             next_label_index = next_image_index - 1
             label = self.labels[next_label_index]
@@ -403,8 +404,6 @@ class InfiniteImageLoadingGenerator(object):
                     step_index = next_image_index - step
                     if 1 <= step_index <= next_image_index:
                          steps[i, self.timesteps - step - 1, :, :, :] = self.load_image(step_index)
-
-            self.incr_index()
 
         if self.transform_model is not None:
             samples = self.transform_model.predict_on_batch(samples)
@@ -747,4 +746,9 @@ if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
 
     dataset = load_dataset('s3://sdc-matt/datasets/sdc_processed_1')
-    dataset.training_generator().with_percentile_sampling('uniform')
+    gen = (dataset
+        .training_generator(256)
+        .with_percentile_sampling('uniform'))
+
+    import pdb
+    pdb.set_trace()
