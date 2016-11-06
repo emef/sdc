@@ -274,45 +274,26 @@ class RegressionModel(BaseModel):
         """
         """
         model = Sequential()
-        model.add(Convolution2D(3, 5, 5,
+        model.add(Convolution2D(16, 5, 5,
             input_shape=input_shape,
             init= "glorot_uniform",
             activation='relu',
-            subsample=(2, 2),
             border_mode='same'))
-        model.add(Convolution2D(24, 5, 5,
+        model.add(MaxPooling2D(pool_size=(4, 5)))
+        model.add(Convolution2D(32, 4, 4,
             init= "glorot_uniform",
             activation='relu',
-            subsample=(2, 2),
             border_mode='same'))
-        model.add(Convolution2D(36, 5, 5,
-            init= "glorot_uniform",
-            activation='relu',
-            subsample=(2, 2),
-            border_mode='same'))
-        model.add(Convolution2D(48, 3, 3,
-            init= "glorot_uniform",
-            activation='relu',
-            subsample=(2, 2),
-            border_mode='same'))
-        model.add(Convolution2D(64, 3, 3,
-            init= "glorot_uniform",
-            activation='relu',
-            subsample=(2, 2),
-            border_mode='same'))
+        model.add(MaxPooling2D(pool_size=(2, 3)))
         model.add(Convolution2D(64, 3, 3,
             init= "glorot_uniform",
             activation='relu',
             border_mode='same'))
+        model.add(MaxPooling2D(pool_size=(2, 2)))
         model.add(Flatten())
         model.add(Dropout(0.5))
         model.add(Dense(
-            output_dim=1000,
-            init='glorot_uniform',
-            activation='relu'))
-        model.add(Dropout(0.5))
-        model.add(Dense(
-            output_dim=100,
+            output_dim=64,
             init='glorot_uniform',
             activation='relu'))
         model.add(Dropout(0.5))
