@@ -340,16 +340,18 @@ class InfiniteImageLoadingGenerator(object):
             samples[i] = image
             labels[i] = label
 
-            for step in xrange(self.timesteps):
-                step_index = next_label_index - step - 1
-                if self.generator_type == 'timestepped_labels':
+            if self.generator_type == 'timestepped_labels':
+                for step in xrange(self.timesteps):
+                    step_index = next_label_index - step - 1
                     prev = (self.labels[step_index]
-                            if 0 <= step_index <= next_label_index
-                            else default_prev)
+                        if 0 <= step_index <= next_label_index
+                        else default_prev)
                     steps[i, step] = prev
-                elif self.generator_type == 'timestepped_images':
-                    if 0 <= step_index <= next_label_index:
-                        steps[i, self.timesteps - step - 1, :, :, :] = self.load_image(step_index + 1)
+            elif self.generator_type == 'timestepped_images':
+                for step in xrange(self.timesteps):
+                    step_index = next_image_index - step
+                    if 1 <= step_index <= next_image_index:
+                         steps[i, self.timesteps - step - 1, :, :, :] = self.load_image(step_index)
 
             self.incr_index()
 
@@ -364,7 +366,7 @@ class InfiniteImageLoadingGenerator(object):
                 ).astype(int)
                 samples = np.concatenate((samples, steps), axis=1)
             elif self.generator_type == 'timestepped_images':
-                samples = np.concatenate((steps, np.expand_dims(samples, axis=1)), axis=1)
+                samples = steps
 
         return (samples, labels)
 

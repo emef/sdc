@@ -68,7 +68,7 @@ if __name__ == '__main__':
     task_id = str(int(time.time()))
     datasets_dir = "/home/ubuntu"
 
-    if True:
+    if False:
         task = {
             'task_id': task_id,
             'score_metric': 'val_rmse',
@@ -126,7 +126,7 @@ if __name__ == '__main__':
             },
         }
 
-    if False:
+    if True:
         input_model_config = {
             'model_uri': 's3://sdc-matt/simple/1477715388/model.h5',
             'type': 'simple',
@@ -137,11 +137,11 @@ if __name__ == '__main__':
             's3://sdc-matt/tmp/' + task_id,
             input_model_config,
             (10, 120, 320, 3),
-            timesteps=9)
+            timesteps=10)
 
         task = {
             'task_id': task_id,
-            'dataset_uri': 's3://sdc-matt/datasets/final_training',
+            'dataset_uri': 's3://sdc-matt/datasets/finale_lstm_seq',
             'model_config': lstm_model_config,
             'training_args': {
                 'batch_size': 64,
