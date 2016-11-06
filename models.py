@@ -293,10 +293,12 @@ class RegressionModel(BaseModel):
         model.add(Convolution2D(48, 3, 3,
             init= "glorot_uniform",
             activation='relu',
+            subsample=(2, 2),
             border_mode='same'))
         model.add(Convolution2D(64, 3, 3,
             init= "glorot_uniform",
             activation='relu',
+            subsample=(2, 2),
             border_mode='same'))
         model.add(Convolution2D(64, 3, 3,
             init= "glorot_uniform",
