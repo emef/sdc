@@ -96,7 +96,7 @@ if __name__ == '__main__':
                 's3://sdc-matt/tmp/' + task_id,
                 use_adadelta=True,
                 learning_rate=0.001,
-                thresholds=[-0.1, 0.03, 0.03, 0.1],
+                thresholds=[-0.1, -0.03, 0.03, 0.1],
                 input_shape=(120, 320, 3)),
             'training_args': {
                 'percentile_sampling': 'uniform',

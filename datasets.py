@@ -212,14 +212,21 @@ class InfiniteImageLoadingGenerator(object):
 
         if pctl_sampling != 'none':
             these_labels = labels[indexes - 1]
-            percentiles = mquantiles(these_labels, np.arange(0.0, 1.01, 0.01))
+            if thresholds is not None:
+                pctl_splits = (
+                    [these_labels.min()] +
+                    thresholds +
+                    [these_labels.max()])
+            else:
+                pctl_splits = mquantiles(these_labels, np.arange(0.0, 1.01, 0.01))
+
             self.pctl_indexes = filter(len, [
                 indexes[np.where((these_labels >= lb) & (these_labels < ub))[0]]
-                for lb, ub in zip(percentiles[:-1], percentiles[1:])])
+                for lb, ub in zip(pctl_splits[:-1], pctl_splits[1:])])
 
         # If cat_classes specified, map labels to discrete classes
         if thresholds is not None:
-            binned_labels = (np.digitize(labels, thresholds)).astype('float64')
+            binned_labels = np.digitize(labels, thresholds)
             self.labels = to_categorical(binned_labels)
             self.label_shape = list(self.labels.shape[1:])
         else:
@@ -821,5 +828,5 @@ if __name__ == '__main__':
 
     import pdb
     pdb.set_trace()
-    
+
     #prepare_local_dataset("/home/ubuntu/datasets/finale", "/home/ubuntu/datasets/finale_reg")
