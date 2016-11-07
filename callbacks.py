@@ -1,6 +1,9 @@
-import time
+import logging, time
 
 from keras.callbacks import Callback
+
+logger = logging.getLogger(__name__)
+
 
 class SnapshotCallback(Callback):
     """

@@ -66,7 +66,7 @@ def handle_task(task, datasets_dir):
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
     task_id = str(int(time.time()))
-    datasets_dir = "/home/ubuntu"
+    datasets_dir = "/tmp"
 
     if False:
         task = {
@@ -87,19 +87,21 @@ if __name__ == '__main__':
         }
 
 
-    if False:
+    if True:
         task = {
             'task_id': task_id,
-            'dataset_uri': 's3://sdc-matt/datasets/final_training',
+            'dataset_uri': 's3://sdc-matt/datasets/finale_timestepped_full',
             'output_uri': 's3://',
             'model_config': CategoricalModel.create(
                 's3://sdc-matt/tmp/' + task_id,
                 use_adadelta=True,
                 learning_rate=0.001,
+                thresholds=[-0.1, 0.03, 0.03, 0.1],
                 input_shape=(120, 320, 3)),
             'training_args': {
-                'batch_size': 64,
-                'epochs': 50,
+                'percentile_sampling': 'uniform',
+                'batch_size': 32,
+                'epochs': 20,
             },
         }
 
@@ -127,7 +129,7 @@ if __name__ == '__main__':
             },
         }
 
-    if True:
+    if False:
         input_model_config = {
             'model_uri': 's3://sdc-matt/simple/1477715388/model.h5',
             'type': 'simple',

@@ -29,8 +29,7 @@ class Dataset(object):
                  training_indexes,
                  testing_indexes,
                  validation_indexes,
-                 image_file_fmt='%d.png.npy',
-                 thresholds=None):
+                 image_file_fmt='%d.png.npy'):
         """
         @param images_base_path - path to image files
         @param labels - 2d array of all label data
@@ -38,36 +37,13 @@ class Dataset(object):
         @param testing_indexes - 1d array of testing indexes
         @param validation_indexes - 1d array of validation indexes
         @param image_file_fmt - format string for image file names
-        @param cat_classes - number of categorical classes; use regression
-                             if not specified (== None)
         """
+        self.labels = labels
         self.training_indexes = training_indexes
         self.testing_indexes = testing_indexes
         self.validation_indexes = validation_indexes
         self.images_base_path = images_base_path
         self.image_file_fmt = image_file_fmt
-
-        # If cat_classes specified, map labels to discrete classes
-        if thresholds is not None:
-            binned_labels = (np.digitize(labels, thresholds)).astype('float64')
-            self.labels = to_categorical(binned_labels)
-        else:
-            self.labels = labels
-
-    def as_categorical(self, thresholds):
-        """
-        Return this dataset with categorical, binned labels.
-
-        @return - this dataset with categorical labels
-        """
-        return Dataset(
-            self.images_base_path,
-            self.labels,
-            self.training_indexes,
-            self.testing_indexes,
-            self.validation_indexes,
-            self.image_file_fmt,
-            thresholds)
 
     def get_image_shape(self):
         """
@@ -198,6 +174,7 @@ class InfiniteImageLoadingGenerator(object):
                  images_base_path,
                  image_file_fmt,
                  shuffle_on_exhaust,
+                 thresholds=None,
                  pctl_sampling='none',
                  timesteps=0,
                  timestep_noise=0,
@@ -211,6 +188,7 @@ class InfiniteImageLoadingGenerator(object):
         @param images_base_path - local path to image directory
         @param image_file_fmt - format string for image filenames
         @param shuffle_on_exhaust - should shuffle data on each full pass
+        @param thresholds - categorical label thresholds.
         @param pctl_sampling - type of percentile sampling.
         @param timesteps - appends this many previous labels to end of samples
         @param timestep_noise - +/- random noise factor
@@ -219,15 +197,18 @@ class InfiniteImageLoadingGenerator(object):
         """
         self.batch_size = batch_size
         self.indexes = indexes
-        self.labels = labels
+        self.orig_labels = labels
         self.images_base_path = images_base_path
         self.image_file_fmt = image_file_fmt
         self.shuffle_on_exhaust = shuffle_on_exhaust
+        self.thresholds = thresholds
         self.pctl_sampling = pctl_sampling
         self.timesteps = timesteps
         self.timestep_noise = timestep_noise
         self.timestep_dropout = timestep_dropout
         self.transform_model = transform_model
+
+        self.image_shape = list(self.load_image(self.indexes[0]).shape)
 
         if pctl_sampling != 'none':
             these_labels = labels[indexes - 1]
@@ -236,13 +217,34 @@ class InfiniteImageLoadingGenerator(object):
                 indexes[np.where((these_labels >= lb) & (these_labels < ub))[0]]
                 for lb, ub in zip(percentiles[:-1], percentiles[1:])])
 
+        # If cat_classes specified, map labels to discrete classes
+        if thresholds is not None:
+            binned_labels = (np.digitize(labels, thresholds)).astype('float64')
+            self.labels = to_categorical(binned_labels)
+            self.label_shape = list(self.labels.shape[1:])
+        else:
+            self.labels = self.orig_labels
+            self.label_shape = [1]
+
         assert generator_type in self.GENERATOR_TYPE
         self.generator_type = generator_type
 
         self.current_index = 0
-        self.image_shape = list(self.load_image(self.indexes[0]).shape)
-        self.label_shape = ([1] if len(self.labels.shape) == 1
-                            else list(self.labels.shape[1:]))
+
+    def as_categorical(self, thresholds):
+        return InfiniteImageLoadingGenerator(
+            batch_size=self.batch_size,
+            indexes=self.indexes,
+            labels=self.orig_labels,
+            images_base_path=self.images_base_path,
+            image_file_fmt=self.image_file_fmt,
+            shuffle_on_exhaust=self.shuffle_on_exhaust,
+            thresholds=thresholds,
+            pctl_sampling=self.pctl_sampling,
+            timesteps=self.timesteps,
+            timestep_noise=self.timestep_noise,
+            timestep_dropout=self.timestep_dropout,
+            transform_model=self.transform_model)
 
     def with_percentile_sampling(self, sampling_type='uniform'):
         """
@@ -256,10 +258,11 @@ class InfiniteImageLoadingGenerator(object):
         return InfiniteImageLoadingGenerator(
             batch_size=self.batch_size,
             indexes=self.indexes,
-            labels=self.labels,
+            labels=self.orig_labels,
             images_base_path=self.images_base_path,
             image_file_fmt=self.image_file_fmt,
             shuffle_on_exhaust=self.shuffle_on_exhaust,
+            thresholds=self.thresholds,
             pctl_sampling=sampling_type,
             timesteps=self.timesteps,
             timestep_noise=self.timestep_noise,
@@ -283,10 +286,11 @@ class InfiniteImageLoadingGenerator(object):
         return InfiniteImageLoadingGenerator(
             batch_size=self.batch_size,
             indexes=self.indexes,
-            labels=self.labels,
+            labels=self.orig_labels,
             images_base_path=self.images_base_path,
             image_file_fmt=self.image_file_fmt,
             shuffle_on_exhaust=self.shuffle_on_exhaust,
+            thresholds=self.thresholds,
             pctl_sampling=self.pct_sampling,
             timesteps=timesteps,
             timestep_noise=timestep_noise,
@@ -310,10 +314,11 @@ class InfiniteImageLoadingGenerator(object):
         return InfiniteImageLoadingGenerator(
             batch_size=self.batch_size,
             indexes=self.indexes,
-            labels=self.labels,
+            labels=self.orig_labels,
             images_base_path=self.images_base_path,
             image_file_fmt=self.image_file_fmt,
             shuffle_on_exhaust=self.shuffle_on_exhaust,
+            thresholds=self.thresholds,
             pctl_sampling=self.pct_sampling,
             timesteps=timesteps,
             timestep_noise=timestep_noise,
@@ -383,7 +388,6 @@ class InfiniteImageLoadingGenerator(object):
             with_replacement = len(chosen_bin) < self.batch_size
             next_indexes = np.random.choice(
                 chosen_bin, self.batch_size, with_replacement)
-
         else:
             raise NotImplementedError
 
@@ -392,10 +396,9 @@ class InfiniteImageLoadingGenerator(object):
 
             # image indexes are 1-indexed
             next_label_index = next_image_index - 1
-            label = self.labels[next_label_index]
 
             samples[i] = image
-            labels[i] = label
+            labels[i] = self.labels[next_label_index]
 
             if self.generator_type == 'timestepped_labels':
                 for step in xrange(self.timesteps):

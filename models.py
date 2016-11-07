@@ -17,6 +17,7 @@ from keras.optimizers import SGD
 from keras.regularizers import l2
 import numpy as np
 from scipy.stats.mstats import mquantiles
+import tensorflow as tf
 
 from util import download_file, parse_s3_uri, upload_file
 
@@ -92,7 +93,6 @@ class CategoricalModel(BaseModel):
                            'as an encoder will fail')
 
     def fit(self, dataset, training_args, callbacks=None):
-        dataset = dataset.as_categorical(self.thresholds)
         batch_size = training_args.get('batch_size', 100)
         epoch_size = training_args.get(
             'epoch_size', dataset.get_training_size())
@@ -102,9 +102,17 @@ class CategoricalModel(BaseModel):
 
         self.model.summary()
 
+        training_generator = (dataset
+            .training_generator(batch_size)
+            .as_categorical(self.thresholds))
+
+        validation_generator = (dataset
+            .validation_generator(batch_size)
+            .as_categorical(self.thresholds))
+
         history = self.model.fit_generator(
-            dataset.training_generator(batch_size),
-            validation_data=dataset.validation_generator(batch_size),
+            training_generator,
+            validation_data=validation_generator,
             samples_per_epoch=epoch_size,
             nb_val_samples=validation_size,
             nb_epoch=epochs,
@@ -112,11 +120,13 @@ class CategoricalModel(BaseModel):
             callbacks=(callbacks or []))
 
     def evaluate(self, dataset):
-        dataset = dataset.as_categorical(self.thresholds)
-        n_testing = dataset.get_testing_size()
-        return  self.model.evaluate_generator(
-            dataset.testing_generator(256),
-            (n_testing / 256) * 256)
+        n_batches = 32 * (dataset.get_testing_size() / 32)
+        testing_generator = (dataset
+            .testing_generator(32)
+            .as_categorical(self.thresholds))
+
+        return self.model.evaluate_generator(
+            testing_generator, n_batches)
 
     def predict_on_batch(self, batch):
         return self.model.predict_on_batch(batch)
@@ -191,7 +201,7 @@ class CategoricalModel(BaseModel):
 	model.compile(
             loss='categorical_crossentropy',
             optimizer=optimizer,
-            metrics=['categorical_accuracy'])
+            metrics=['categorical_accuracy', 'top_2'])
 
         # Upload the model to designated path
         upload_model(model, model_uri)
@@ -751,4 +761,8 @@ def rmse(y_true, y_pred):
     '''
     return K.sqrt(K.mean(K.square(y_pred - y_true)))
 
+def top_2(y_true, y_pred):
+    return K.mean(tf.nn.in_top_k(y_pred, K.argmax(y_true, axis=-1), 2))
+
 metrics.rmse = rmse
+metrics.top_2 = top_2
