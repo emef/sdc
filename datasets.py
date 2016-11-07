@@ -592,6 +592,67 @@ def prepare_dataset(
     # upload dataset directory to s3
     upload_dir(local_output_path, output_s3_uri)
 
+def prepare_local_dataset(
+        local_raw_path,
+        local_output_path,
+        training_percent=0.7,
+        testing_percent=0.2,
+        validation_percent=0.1):
+    """
+    Prepare dataset from nishanth's preprocessed format.
+
+    @param local_raw_path - input path to a dataset directory containing images and a labels file
+    @param local_output_path - where to write prepared dataset locally
+    @param training_percent - percent of samples used in training set
+    @param testing_percent - percent of samples used in testing set
+    @param validation_percent - percent of samples used in validation set
+    """
+    dir_list = list(os.listdir(local_raw_path))
+    assert len(dir_list) == 2
+    assert 'labels' in dir_list
+
+    images_dirname, = [f for f in dir_list if f != 'labels']
+    base_images_path = os.path.join(local_raw_path, images_dirname)
+    logger.info('Using %s as base images directory', base_images_path)
+
+    with open(os.path.join(local_raw_path, 'labels')) as labels_f:
+        labels = np.array([float(line.strip()) for line in labels_f])
+
+    n_samples = len(labels)
+    n_training = int(training_percent * n_samples)
+    n_testing = int(testing_percent * n_samples)
+    n_validation = n_samples - n_training - n_testing
+
+    logger.info('%d total samples in the dataset', n_samples)
+    logger.info('%d samples in training set', n_training)
+    logger.info('%d samples in testing set', n_testing)
+    logger.info('%d samples in validation set', n_validation)
+
+    indexes = np.arange(1, n_samples + 1)
+    np.random.shuffle(indexes)
+
+    training_indexes = indexes[:n_training]
+    testing_indexes = indexes[n_training:(n_training + n_testing)]
+    validation_indexes = indexes[-n_validation:]
+
+    shutil.rmtree(local_output_path, ignore_errors=True)
+    os.makedirs(local_output_path)
+
+    # create the properly-formatted dataset directory
+    np.save(os.path.join(local_output_path, 'labels.npy'), labels)
+    np.save(
+        os.path.join(local_output_path, 'training_indexes.npy'),
+        training_indexes)
+    np.save(
+        os.path.join(local_output_path, 'testing_indexes.npy'),
+        testing_indexes)
+    np.save(
+        os.path.join(local_output_path, 'validation_indexes.npy'),
+        validation_indexes)
+    subprocess.call([
+        'ln', '-s',
+        os.path.join(local_raw_path, 'images'),
+        os.path.join(local_output_path, 'images')])
 
 def prepare_final_dataset(
         local_raw_path,
@@ -757,3 +818,5 @@ if __name__ == '__main__':
 
     import pdb
     pdb.set_trace()
+    
+    #prepare_local_dataset("/home/ubuntu/datasets/finale", "/home/ubuntu/datasets/finale_reg")
