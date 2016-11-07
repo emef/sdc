@@ -110,6 +110,11 @@ class CategoricalModel(BaseModel):
             .validation_generator(batch_size)
             .as_categorical(self.thresholds))
 
+        if 'percentile_sampling' in training_args:
+            sampling_type = training_args['percentile_sampling']
+            training_generator = (training_generator
+                .with_percentile_sampling(sampling_type))
+
         history = self.model.fit_generator(
             training_generator,
             validation_data=validation_generator,
@@ -166,28 +171,24 @@ class CategoricalModel(BaseModel):
             input_shape=input_shape,
             init= "he_normal",
             activation='relu',
-            border_mode='same',
-            bias=True))
+            border_mode='same'))
         model.add(MaxPooling2D(pool_size=(4, 5)))
         model.add(Convolution2D(32, 4, 4,
             init= "he_normal",
             activation='relu',
-            border_mode='same',
-            bias=True))
+            border_mode='same'))
         model.add(MaxPooling2D(pool_size=(2, 3)))
         model.add(Convolution2D(64, 3, 3,
             init= "he_normal",
             activation='relu',
-            border_mode='same',
-            bias=True))
+            border_mode='same'))
         model.add(MaxPooling2D(pool_size=(2, 2)))
         model.add(Flatten())
         model.add(Dropout(0.5))
         model.add(Dense(
             output_dim=64,
             init='he_normal',
-            activation='relu',
-            bias=True))
+            activation='relu'))
         model.add(Dropout(0.5))
         model.add(Dense(
             output_dim=(1 + len(thresholds)),
