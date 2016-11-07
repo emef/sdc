@@ -167,18 +167,23 @@ class CategoricalModel(BaseModel):
         """
         """
         model = Sequential()
-        model.add(Convolution2D(16, 5, 5,
+        model.add(Convolution2D(5, 5, 5,
             input_shape=input_shape,
             init= "he_normal",
             activation='relu',
             border_mode='same'))
-        model.add(MaxPooling2D(pool_size=(4, 5)))
-        model.add(Convolution2D(32, 4, 4,
+        model.add(MaxPooling2D(pool_size=(2, 2)))
+        model.add(Convolution2D(20, 5, 5,
             init= "he_normal",
             activation='relu',
             border_mode='same'))
-        model.add(MaxPooling2D(pool_size=(2, 3)))
+        model.add(MaxPooling2D(pool_size=(2, 2)))
         model.add(Convolution2D(64, 3, 3,
+            init= "he_normal",
+            activation='relu',
+            border_mode='same'))
+        model.add(MaxPooling2D(pool_size=(2, 2)))
+        model.add(Convolution2D(30, 3, 3,
             init= "he_normal",
             activation='relu',
             border_mode='same'))
@@ -186,7 +191,7 @@ class CategoricalModel(BaseModel):
         model.add(Flatten())
         model.add(Dropout(0.5))
         model.add(Dense(
-            output_dim=64,
+            output_dim=128,
             init='he_normal',
             activation='relu'))
         model.add(Dropout(0.5))
