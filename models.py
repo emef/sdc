@@ -183,7 +183,12 @@ class CategoricalModel(BaseModel):
             activation='relu',
             border_mode='same'))
         model.add(MaxPooling2D(pool_size=(2, 2)))
-        model.add(Convolution2D(30, 3, 3,
+        model.add(Convolution2D(64, 3, 3,
+            init= "he_normal",
+            activation='relu',
+            border_mode='same'))
+        model.add(MaxPooling2D(pool_size=(2, 2)))
+        model.add(Convolution2D(100, 3, 3,
             init= "he_normal",
             activation='relu',
             border_mode='same'))
@@ -191,7 +196,7 @@ class CategoricalModel(BaseModel):
         model.add(Flatten())
         model.add(Dropout(0.5))
         model.add(Dense(
-            output_dim=128,
+            output_dim=256,
             init='he_normal',
             activation='relu'))
         model.add(Dropout(0.5))
