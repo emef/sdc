@@ -174,8 +174,9 @@ class InfiniteImageLoadingGenerator(object):
                  images_base_path,
                  image_file_fmt,
                  shuffle_on_exhaust,
-                 thresholds=None,
+                 cat_thresholds=None,
                  pctl_sampling='none',
+                 pctl_thresholds=None,
                  timesteps=0,
                  timestep_noise=0,
                  timestep_dropout=0,
@@ -188,8 +189,9 @@ class InfiniteImageLoadingGenerator(object):
         @param images_base_path - local path to image directory
         @param image_file_fmt - format string for image filenames
         @param shuffle_on_exhaust - should shuffle data on each full pass
-        @param thresholds - categorical label thresholds.
+        @param cat_thresholds - categorical label thresholds.
         @param pctl_sampling - type of percentile sampling.
+        @param pctl_thresholds - override percentile thresholds.
         @param timesteps - appends this many previous labels to end of samples
         @param timestep_noise - +/- random noise factor
         @param timestep_dropout - % change to drop a prev label
@@ -201,8 +203,9 @@ class InfiniteImageLoadingGenerator(object):
         self.images_base_path = images_base_path
         self.image_file_fmt = image_file_fmt
         self.shuffle_on_exhaust = shuffle_on_exhaust
-        self.thresholds = thresholds
+        self.cat_thresholds = cat_thresholds
         self.pctl_sampling = pctl_sampling
+        self.pctl_thresholds = pctl_thresholds
         self.timesteps = timesteps
         self.timestep_noise = timestep_noise
         self.timestep_dropout = timestep_dropout
@@ -212,10 +215,15 @@ class InfiniteImageLoadingGenerator(object):
 
         if pctl_sampling != 'none':
             these_labels = labels[indexes - 1]
-            if thresholds is not None:
+            if cat_thresholds is not None:
                 pctl_splits = (
                     [these_labels.min()] +
-                    thresholds +
+                    cat_thresholds +
+                    [these_labels.max()])
+            elif pctl_thresholds is not None:
+                pctl_splits = (
+                    [these_labels.min()] +
+                    pctl_thresholds +
                     [these_labels.max()])
             else:
                 pctl_splits = mquantiles(these_labels, np.arange(0.0, 1.01, 0.01))
@@ -225,8 +233,8 @@ class InfiniteImageLoadingGenerator(object):
                 for lb, ub in zip(pctl_splits[:-1], pctl_splits[1:])])
 
         # If cat_classes specified, map labels to discrete classes
-        if thresholds is not None:
-            binned_labels = np.digitize(labels, thresholds)
+        if cat_thresholds is not None:
+            binned_labels = np.digitize(labels, cat_thresholds)
             self.labels = to_categorical(binned_labels)
             self.label_shape = list(self.labels.shape[1:])
         else:
@@ -246,14 +254,17 @@ class InfiniteImageLoadingGenerator(object):
             images_base_path=self.images_base_path,
             image_file_fmt=self.image_file_fmt,
             shuffle_on_exhaust=self.shuffle_on_exhaust,
-            thresholds=thresholds,
+            cat_thresholds=cat_thresholds,
             pctl_sampling=self.pctl_sampling,
+            pctl_thresholds=self.pctl_thresholds,
             timesteps=self.timesteps,
             timestep_noise=self.timestep_noise,
             timestep_dropout=self.timestep_dropout,
             transform_model=self.transform_model)
 
-    def with_percentile_sampling(self, sampling_type='uniform'):
+    def with_percentile_sampling(self,
+                                 pctl_sampling='uniform',
+                                 pctl_thresholds=None):
         """
         Performs some sampling on the labels used in each batch. Types
         of sampling are:
@@ -269,8 +280,9 @@ class InfiniteImageLoadingGenerator(object):
             images_base_path=self.images_base_path,
             image_file_fmt=self.image_file_fmt,
             shuffle_on_exhaust=self.shuffle_on_exhaust,
-            thresholds=self.thresholds,
-            pctl_sampling=sampling_type,
+            cat_thresholds=self.cat_thresholds,
+            pctl_sampling=pctl_sampling,
+            pctl_thresholds=pctl_thresholds,
             timesteps=self.timesteps,
             timestep_noise=self.timestep_noise,
             timestep_dropout=self.timestep_dropout,
@@ -297,8 +309,9 @@ class InfiniteImageLoadingGenerator(object):
             images_base_path=self.images_base_path,
             image_file_fmt=self.image_file_fmt,
             shuffle_on_exhaust=self.shuffle_on_exhaust,
-            thresholds=self.thresholds,
+            cat_thresholds=self.cat_thresholds,
             pctl_sampling=self.pct_sampling,
+            pctl_thresholds=self.pctl_thresholds,
             timesteps=timesteps,
             timestep_noise=timestep_noise,
             timestep_dropout=timestep_dropout,
@@ -325,8 +338,9 @@ class InfiniteImageLoadingGenerator(object):
             images_base_path=self.images_base_path,
             image_file_fmt=self.image_file_fmt,
             shuffle_on_exhaust=self.shuffle_on_exhaust,
-            thresholds=self.thresholds,
+            cat_thresholds=self.cat_thresholds,
             pctl_sampling=self.pct_sampling,
+            pctl_thresholds=self.pctl_thresholds,
             timesteps=timesteps,
             timestep_noise=timestep_noise,
             timestep_dropout=timestep_dropout,
