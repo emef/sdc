@@ -88,7 +88,26 @@ if __name__ == '__main__':
         }
 
 
-        if True:
+    if True:
+        # sharp or not sharp
+        task = {
+            'task_id': task_id,
+            'dataset_uri': 's3://sdc-matt/datasets/finale_nonnegative',
+            'output_uri': 's3://',
+            'model_config': CategoricalModel.create(
+                's3://sdc-matt/tmp/' + task_id,
+                use_adadelta=True,
+                W_l2=0.001,
+                thresholds=[0.061]
+            ),
+            'training_args': {
+                'pctl_sampling': 'uniform',
+                'batch_size': 32,
+                'epochs': 10,
+            },
+        }
+
+    if False:
         task = {
             'task_id': task_id,
             'dataset_uri': 's3://sdc-matt/datasets/finale_nonnegative',
@@ -99,7 +118,6 @@ if __name__ == '__main__':
             },
             'training_args': {
                 'pctl_sampling': 'uniform',
-
                 'batch_size': 32,
                 'epochs': 5,
             },
