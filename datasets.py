@@ -234,9 +234,13 @@ class InfiniteImageLoadingGenerator(object):
 
         # If cat_classes specified, map labels to discrete classes
         if cat_thresholds is not None:
-            binned_labels = np.digitize(labels, cat_thresholds)
-            self.labels = to_categorical(binned_labels)
-            self.label_shape = list(self.labels.shape[1:])
+            if len(cat_thresholds) == 1:
+                self.labels = labels > cat_thresholds[0]
+                self.label_shape = [1]
+            else:
+                binned_labels = np.digitize(labels, cat_thresholds)
+                self.labels = to_categorical(binned_labels)
+                self.label_shape = list(self.labels.shape[1:])
         else:
             self.labels = self.orig_labels
             self.label_shape = [1]
