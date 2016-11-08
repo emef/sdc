@@ -210,10 +210,17 @@ class CategoricalModel(BaseModel):
         optimizer = ('adadelta' if use_adadelta
                      else SGD(lr=learning_rate, momentum=0.9))
 
+        if len(thresholds) == 1:
+            loss = 'binary_crossentropy'
+            metrics = 'accuracy'
+        else:
+            loss = 'categorical_crossentropy'
+            metrics = 'categorical_accuracy'
+
 	model.compile(
-            loss='categorical_crossentropy',
+            loss=loss,
             optimizer=optimizer,
-            metrics=['categorical_accuracy', 'top_2'])
+            metrics=metrics)
 
         # Upload the model to designated path
         upload_model(model, model_uri)
