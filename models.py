@@ -212,10 +212,10 @@ class CategoricalModel(BaseModel):
 
         if len(thresholds) == 1:
             loss = 'binary_crossentropy'
-            metrics = 'accuracy'
+            metrics = ['accuracy']
         else:
             loss = 'categorical_crossentropy'
-            metrics = 'categorical_accuracy'
+            metrics = ['categorical_accuracy', 'top_2']
 
 	model.compile(
             loss=loss,
