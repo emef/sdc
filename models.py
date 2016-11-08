@@ -110,10 +110,11 @@ class CategoricalModel(BaseModel):
             .validation_generator(batch_size)
             .as_categorical(self.thresholds))
 
-        if 'percentile_sampling' in training_args:
-            sampling_type = training_args['percentile_sampling']
+        if 'pctl_sampling' in training_args:
+            pctl_sampling = training_args['pctl_sampling']
+            pctl_thresholds = training_args.get('pctl_thresholds')
             training_generator = (training_generator
-                .with_percentile_sampling(sampling_type))
+                .with_percentile_sampling(pctl_sampling, pctl_thresholds))
 
         history = self.model.fit_generator(
             training_generator,
@@ -241,10 +242,11 @@ class RegressionModel(BaseModel):
         self.model.summary()
 
         training_generator = dataset.training_generator(batch_size)
-        if 'percentile_sampling' in training_args:
-            sampling_type = training_args['percentile_sampling']
+        if 'pctl_sampling' in training_args:
+            pctl_sampling = training_args['pctl_sampling']
+            pctl_thresholds = training_args.get('pctl_thresholds')
             training_generator = (training_generator
-                .with_percentile_sampling(sampling_type))
+                .with_percentile_sampling(pctl_sampling, pctl_thresholds))
 
         history = self.model.fit_generator(
             training_generator,

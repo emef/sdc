@@ -82,12 +82,30 @@ if __name__ == '__main__':
             'training_args': {
                 'batch_size': 64,
                 'epochs': 10,
-                'percentile_sampling': 'uniform',
+                'pctl_sampling': 'uniform',
+                'pctl_thresholds': [0.61],
             },
         }
 
 
-    if True:
+        if True:
+        task = {
+            'task_id': task_id,
+            'dataset_uri': 's3://sdc-matt/datasets/finale_nonnegative',
+            'output_uri': 's3://',
+            'model_config': {
+                'type': 'regression',
+                'model_uri': 's3://sdc-matt/regression/from_cat_3/2/model.h5',
+            },
+            'training_args': {
+                'pctl_sampling': 'uniform',
+
+                'batch_size': 32,
+                'epochs': 5,
+            },
+        }
+
+    if False:
         task = {
             'task_id': task_id,
             'dataset_uri': 's3://sdc-matt/datasets/finale_timestepped_full',
@@ -99,7 +117,7 @@ if __name__ == '__main__':
                 thresholds=[-0.1, -0.03, 0.03, 0.1],
                 input_shape=(120, 320, 3)),
             'training_args': {
-                'percentile_sampling': 'uniform',
+                'pctl_sampling': 'uniform',
                 'batch_size': 32,
                 'epochs': 20,
             },
