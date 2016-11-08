@@ -83,7 +83,7 @@ if __name__ == '__main__':
                 'batch_size': 64,
                 'epochs': 10,
                 'pctl_sampling': 'uniform',
-                'pctl_thresholds': [0.61],
+                'pctl_thresholds': [0.061],
             },
         }
 

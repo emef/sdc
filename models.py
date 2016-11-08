@@ -343,6 +343,52 @@ class RegressionModel(BaseModel):
         }
 
 
+class MixtureModel(BaseModel):
+    """
+    """
+    TYPE = 'mixture'
+
+    def __init__(self, model_config):
+        self.general_regression = load_from_config(
+            model_config['general_regression'])
+        self.sharp_regression = load_from_config(
+            model_config['sharp_regression'])
+        self.sign_classifier = load_from_config(
+            model_config['sign_classifier'])
+        self.sharp_classifier = load_from_config(
+            model_config['sharp_classifier'])
+        self.sharp_split = model_config['sharp_split']
+        self.sharp_bias = model_config['sharp_bias']
+
+    def predict_on_batch(self, batch):
+        output = np.empty(len(batch), dtype='float64')
+        p_sign = self.sign_classifier.predict_on_batch(batch)
+        p_sharp = self.sharp_classifier.predict_on_batch(batch)
+        sign = 1.0 if p_sign > 0.5 else -1.0
+
+        if p_sharp * self.sharp_bias > 0.5:
+            return sign * self.sharp_regression(batch)
+        else:
+            return sign * self.general_regression(batch)
+
+    def evaluate(self, dataset):
+        batch_size = 32
+        testing_size = dataset.get_testing_size()
+        testing_generator = dataset.testing_generator(batch_size)
+        n_batches = testing_size / batch_size
+
+        err_sum = 0.
+        err_count = 0.
+        for _ in xrange(n_batches):
+            X_batch, y_batch = testing_generator.next()
+            y_pred = self.predict_on_batch(X_batch)
+            err_sum = np.sum((y_batch - y_pred) ** 2)
+            err_count += len(y_pred)
+        mse = err_sum / err_count
+        rmse = np.sqrt(mse)
+        return [mse, rmse]
+
+
 class EnsembleModel(BaseModel):
     """
     """
@@ -688,6 +734,7 @@ MODEL_CLASS_BY_TYPE = {
     EnsembleModel.TYPE: EnsembleModel,
     RegressionModel.TYPE: RegressionModel,
     LstmModel.TYPE: LstmModel,
+    MixtureModel.TYPE: MixtureModel,
 }
 
 
