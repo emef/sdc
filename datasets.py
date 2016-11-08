@@ -246,7 +246,7 @@ class InfiniteImageLoadingGenerator(object):
 
         self.current_index = 0
 
-    def as_categorical(self, thresholds):
+    def as_categorical(self, cat_thresholds):
         return InfiniteImageLoadingGenerator(
             batch_size=self.batch_size,
             indexes=self.indexes,

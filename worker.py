@@ -87,7 +87,6 @@ if __name__ == '__main__':
             },
         }
 
-
     if True:
         # sharp or not sharp
         task = {
