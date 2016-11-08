@@ -167,6 +167,8 @@ class CategoricalModel(BaseModel):
                W_l2=0.0001):
         """
         """
+        output_dim = 1 if len(thresholds) == 1 else len(thresholds) + 1
+
         model = Sequential()
         model.add(Convolution2D(5, 5, 5,
             input_shape=input_shape,
@@ -202,7 +204,7 @@ class CategoricalModel(BaseModel):
             activation='relu'))
         model.add(Dropout(0.5))
         model.add(Dense(
-            output_dim=(1 + len(thresholds)),
+            output_dim=output_dim,
             init='he_normal',
             W_regularizer=l2(W_l2),
             activation='sigmoid'))
