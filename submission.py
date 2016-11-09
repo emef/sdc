@@ -58,37 +58,31 @@ def main():
         predictor = lambda x: model.predict_on_batch(x)[0][0]
 
     elif model_type == 'mixture':
-        classifier = load_from_config({
-            'model_uri': 's3://sdc-matt/categorical/1477955713/model.h5',
-            'thresholds': [-0.05],
-            'type': 'categorical'})
-
-        center_model = load_from_config({
-            'model_uri': 's3://sdc-matt/regression/1477976259/model.h5',
-            'type': 'regression'
+        model = load_from_config({
+            'type': 'mixture',
+            'sharp_split': 0.061,
+            'sharp_bias': 1.0,
+            'general_regression': {
+                'model_uri': 's3://sdc-matt/regression/1478639512/model.h5',
+                'type': 'regression'
+            },
+            'sharp_regression': {
+                'model_uri': 's3://sdc-matt/regression/1478642350/model.h5',
+                'type': 'regression'
+            },
+            'sign_classifier':  {
+                'model_uri': 's3://sdc-matt/categorical/1478702375/model.h5',
+                'thresholds': [0.0],
+                'type': 'categorical'
+            },
+            'sharp_classifier': {
+                'model_uri': 's3://sdc-matt/categorical/1478644552/model.h5',
+                'thresholds': [0.061],
+                'type': 'categorical'
+            },
         })
 
-        left_model = load_from_config({
-            'model_uri': 's3://sdc-matt/regression/1477959307/model.h5',
-            'type': 'regression'})
-
-        left_bias = 0.057
-        center_bounds = [-0.05, 0.1]
-        left_bounds = [-0.2, -0.0]
-
-        def predictor(x):
-            p_left, p_center = classifier.predict_on_batch(x)[0]
-            if left_bias * p_left > p_center:
-                model = left_model
-                bounds = left_bounds
-            else:
-                model = center_model
-                bounds = center_bounds
-
-            p_angle = model.predict_on_batch(x)[0, 0]
-            lb, ub = bounds
-
-            return np.clip(p_angle, lb, ub)
+        predictor = lambda x: model.predict_on_batch(x)[0, 0]
 
     with open('submission.%s.csv' % int(time.time()), 'w') as f:
         f.write('frame_id,steering_angle\n')

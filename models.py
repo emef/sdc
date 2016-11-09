@@ -370,15 +370,21 @@ class MixtureModel(BaseModel):
         self.sharp_bias = model_config['sharp_bias']
 
     def predict_on_batch(self, batch):
-        output = np.empty(len(batch), dtype='float64')
+        shape = tuple([1] + list(batch.shape[1:]))
         p_sign = self.sign_classifier.predict_on_batch(batch)
         p_sharp = self.sharp_classifier.predict_on_batch(batch)
-        sign = 1.0 if p_sign > 0.5 else -1.0
+        output = np.empty(len(batch), dtype='float64')
+        for i, x in enumerate(batch):
+            sign = 1.0 if p_sign[i] > 0.5 else -1.0
+            is_sharp = p_sharp[i] * self.sharp_bias > 0.5
+            regression_model = (
+                self.general_regression if not is_sharp
+                else self.sharp_regression)
+            p_angle = regression_model.predict_on_batch(
+                x.reshape(shape))[0, 0]
+            output[i] = sign * p_angle
 
-        if p_sharp * self.sharp_bias > 0.5:
-            return sign * self.sharp_regression(batch)
-        else:
-            return sign * self.general_regression(batch)
+        return output
 
     def evaluate(self, dataset):
         batch_size = 32
