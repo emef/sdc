@@ -106,6 +106,25 @@ if __name__ == '__main__':
             },
         }
 
+    if True:
+        # left or right
+        task = {
+            'task_id': task_id,
+            'dataset_uri': 's3://sdc-matt/datasets/finale_balanced_sharp',
+            'output_uri': 's3://',
+            'model_config': CategoricalModel.create(
+                's3://sdc-matt/tmp/' + task_id,
+                use_adadelta=True,
+                W_l2=0.001,
+                thresholds=[0.0]
+            ),
+            'training_args': {
+                'batch_size': 32,
+                'epochs': 10,
+            },
+        }
+
+
     if False:
         task = {
             'task_id': task_id,
