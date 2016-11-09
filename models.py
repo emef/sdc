@@ -373,7 +373,7 @@ class MixtureModel(BaseModel):
         shape = tuple([1] + list(batch.shape[1:]))
         p_sign = self.sign_classifier.predict_on_batch(batch)
         p_sharp = self.sharp_classifier.predict_on_batch(batch)
-        output = np.empty(len(batch), dtype='float64')
+        output = np.empty((len(batch), 1), dtype='float64')
         for i, x in enumerate(batch):
             sign = 1.0 if p_sign[i] > 0.5 else -1.0
             is_sharp = p_sharp[i] * self.sharp_bias > 0.5
@@ -397,7 +397,7 @@ class MixtureModel(BaseModel):
         for _ in xrange(n_batches):
             X_batch, y_batch = testing_generator.next()
             y_pred = self.predict_on_batch(X_batch)
-            err_sum = np.sum((y_batch - y_pred) ** 2)
+            err_sum += np.sum((y_batch - y_pred) ** 2)
             err_count += len(y_pred)
         mse = err_sum / err_count
         rmse = np.sqrt(mse)
@@ -465,7 +465,7 @@ class EnsembleModel(BaseModel):
             callbacks=(callbacks or []))
 
     def evaluate(self, dataset):
-        batch_size = 256
+        batch_size = 32
         testing_size = dataset.get_testing_size()
         testing_generator = dataset.testing_generator(batch_size)
         predictor = self.make_stateful_predictor()
@@ -654,7 +654,7 @@ class LstmModel(BaseModel):
             callbacks=(callbacks or []))
 
     def evaluate(self, dataset):
-        batch_size = 64
+        batch_size = 32
         testing_size = dataset.get_testing_size()
         testing_generator = (dataset
             .testing_generator(batch_size)
@@ -666,7 +666,7 @@ class LstmModel(BaseModel):
         for _ in xrange(n_batches):
             X_batch, y_batch = testing_generator.next()
             y_pred = self.model.predict_on_batch(X_batch)
-            err_sum = np.sum((y_batch - y_pred) ** 2)
+            err_sum += np.sum((y_batch - y_pred) ** 2)
             err_count += len(y_pred)
         mse = err_sum / err_count
         return [mse]

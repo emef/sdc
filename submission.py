@@ -82,7 +82,7 @@ def main():
             },
         })
 
-        predictor = lambda x: model.predict_on_batch(x)[0, 0]
+        predictor = lambda x: model.predict_on_batch(x)[0]
 
     with open('submission.%s.csv' % int(time.time()), 'w') as f:
         f.write('frame_id,steering_angle\n')

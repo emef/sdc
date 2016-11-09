@@ -110,7 +110,7 @@ if __name__ == '__main__':
         # left or right
         task = {
             'task_id': task_id,
-            'dataset_uri': 's3://sdc-matt/datasets/finale_balanced_sharp',
+            'dataset_uri': 's3://sdc-matt/datasets/finale_full',
             'output_uri': 's3://',
             'model_config': CategoricalModel.create(
                 's3://sdc-matt/tmp/' + task_id,
