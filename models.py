@@ -374,12 +374,17 @@ class MixtureModel(BaseModel):
         p_sign = self.sign_classifier.predict_on_batch(batch)
         p_sharp = self.sharp_classifier.predict_on_batch(batch)
         output = np.empty((len(batch), 1), dtype='float64')
+
         for i, x in enumerate(batch):
             sign = 1.0 if p_sign[i] > 0.5 else -1.0
             is_sharp = p_sharp[i] * self.sharp_bias > 0.5
             regression_model = (
                 self.general_regression if not is_sharp
                 else self.sharp_regression)
+
+            if (sign == -1):
+                x = x[:, ::-1, :]
+
             p_angle = regression_model.predict_on_batch(
                 x.reshape(shape))[0, 0]
             output[i] = sign * p_angle
@@ -402,6 +407,40 @@ class MixtureModel(BaseModel):
         mse = err_sum / err_count
         rmse = np.sqrt(mse)
         return [mse, rmse]
+
+
+    def make_stateful_predictor(self,
+                                smoothing=False,
+                                smoothing_steps=10,
+                                interpolation_weight=0.25):
+        if smoothing:
+            assert smoothing_steps >= 2
+            X = np.linspace(0, 1, smoothing_steps)
+            x1 = 1 + X[1] - X[0]
+            prev = deque([0 for _ in xrange(smoothing_steps)])
+
+        n_seen = 0
+        def predict_fn(x):
+            p = self.predict_on_batch([x])
+
+            if not smoothing:
+                return p
+
+            if n_seen >= smoothing_steps:
+                m, b = np.polyfit(X, prev, 1)
+                p_interp = b + m * x1
+                p_weighted = ((1 - interpolation_weight) * p
+                              + interpolation_weight * p_interp)
+            else:
+                p_weighted = p
+
+            prev.popleft()
+            prev.append(p)
+            n_seen += 1
+
+            return p_weighted
+
+        return predict_fn
 
 
 class EnsembleModel(BaseModel):
