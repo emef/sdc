@@ -101,7 +101,7 @@ if __name__ == '__main__':
             ),
             'training_args': {
                 'batch_size': 32,
-                'epochs': 20,
+                'epochs': 30,
                 'pctl_sampling': 'uniform',
             },
         }
