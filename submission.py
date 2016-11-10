@@ -71,7 +71,7 @@ def main():
                 'type': 'regression'
             },
             'sign_classifier':  {
-                'model_uri': 's3://sdc-matt/categorical/1478702375/model.h5',
+                'model_uri': 's3://sdc-matt/categorical/1478750529/model.h5',
                 'thresholds': [0.0],
                 'type': 'categorical'
             },
