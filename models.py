@@ -417,26 +417,24 @@ class MixtureModel(BaseModel):
             assert smoothing_steps >= 2
             X = np.linspace(0, 1, smoothing_steps)
             x1 = 1 + X[1] - X[0]
-            prev = deque([0 for _ in xrange(smoothing_steps)])
+            prev = deque()
 
-        n_seen = 0
         def predict_fn(x):
-            p = self.predict_on_batch([x])
+            p = self.predict_on_batch(x)[0, 0]
 
             if not smoothing:
                 return p
 
-            if n_seen >= smoothing_steps:
+            if len(prev) == smoothing_steps:
                 m, b = np.polyfit(X, prev, 1)
                 p_interp = b + m * x1
                 p_weighted = ((1 - interpolation_weight) * p
                               + interpolation_weight * p_interp)
+                prev.popleft()
             else:
                 p_weighted = p
 
-            prev.popleft()
             prev.append(p)
-            n_seen += 1
 
             return p_weighted
 

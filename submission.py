@@ -82,7 +82,9 @@ def main():
             },
         })
 
-        predictor = model.make_stateful_predictor()
+        predictor = model.make_stateful_predictor(
+            smoothing=True,
+            interpolation_weight=0.5)
 
     with open('submission.%s.csv' % int(time.time()), 'w') as f:
         f.write('frame_id,steering_angle\n')
