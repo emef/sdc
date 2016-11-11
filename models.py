@@ -80,6 +80,32 @@ class BaseModel(object):
         """
         raise NotImplemented
 
+    def predict_all(self, dataset, test_only=False):
+        """
+        todo support multi-class output
+
+        @returns - (y_pred, y_true)
+        """
+        batch_size = 32
+        if test_only:
+            generator = dataset.testing_generator(batch_size)
+            n_total = dataset.testing_size()
+        else:
+            generator = dataset.sequential_generator(batch_size)
+            n_total = len(dataset.labels)
+
+        n_batches = n_total / batch_size
+        y_pred = np.empty(n_batches * batch_size)
+        y_true = np.empty(n_batches * batch_size)
+
+        for i in xrange(n_batches):
+            x, y = generator.next()
+            start, end = (i * batch_size, (i + 1) * batch_size)
+            y_pred[start:end] = self.predict_on_batch(batch)
+            y_true[start:end] = y
+
+        return y_pred, y_true
+
 
 class CategoricalModel(BaseModel):
     TYPE = 'categorical'

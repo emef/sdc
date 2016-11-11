@@ -93,6 +93,7 @@ if __name__ == '__main__':
             'task_id': task_id,
             'dataset_uri': 's3://sdc-matt/datasets/finale_full',
             'output_uri': 's3://',
+            'score_metric': 'val_categorical_accuracy',
             'model_config': CategoricalModel.create(
                 's3://sdc-matt/tmp/' + task_id,
                 use_adadelta=True,
