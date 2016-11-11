@@ -68,26 +68,24 @@ if __name__ == '__main__':
     task_id = str(int(time.time()))
     datasets_dir = "/tmp"
 
-    if False:
+    if True:
         task = {
             'task_id': task_id,
             'score_metric': 'val_rmse',
-            'dataset_uri': 's3://sdc-matt/datasets/final_training_left_sampled',
+            'dataset_uri': 's3://sdc-matt/datasets/finale_full',
             'output_uri': 's3://',
             'model_config': RegressionModel.create(
                 's3://sdc-matt/tmp/' + task_id,
-                use_adadelta=False,
+                use_adadelta=True,
                 learning_rate=0.001,
                 input_shape=(120, 320, 3)),
             'training_args': {
-                'batch_size': 64,
-                'epochs': 10,
-                'pctl_sampling': 'uniform',
-                'pctl_thresholds': [0.061],
+                'batch_size': 32,
+                'epochs': 20,
             },
         }
 
-    if True:
+    if False:
         # sharp left vs center vs sharp right
         task = {
             'task_id': task_id,
