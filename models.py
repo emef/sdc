@@ -94,6 +94,7 @@ class BaseModel(object):
             generator = dataset.sequential_generator(batch_size)
             n_total = len(dataset.labels)
 
+        output_dim = self.output_dim()
         n_batches = n_total / batch_size
         y_pred = np.empty(n_batches * batch_size)
         y_true = np.empty(n_batches * batch_size)
@@ -101,8 +102,8 @@ class BaseModel(object):
         for i in xrange(n_batches):
             x, y = generator.next()
             start, end = (i * batch_size, (i + 1) * batch_size)
-            y_pred[start:end] = self.predict_on_batch(batch)
-            y_true[start:end] = y
+            y_pred[start:end] = self.predict_on_batch(x).ravel()
+            y_true[start:end] = y.ravel()
 
         return y_pred, y_true
 
@@ -438,7 +439,8 @@ class MixtureModel(BaseModel):
     def make_stateful_predictor(self,
                                 smoothing=False,
                                 smoothing_steps=10,
-                                interpolation_weight=0.25):
+                                interpolation_weight=0.25,
+                                max_abs_delta=0.026):
         if smoothing:
             assert smoothing_steps >= 2
             X = np.linspace(0, 1, smoothing_steps)
@@ -462,7 +464,18 @@ class MixtureModel(BaseModel):
 
             prev.append(p)
 
-            return p_weighted
+            if max_abs_delta is not None and len(prev) >= 2:
+                p_last = prev[-2]
+                delta = np.clip(
+                    p_weighted - p_last,
+                    -max_abs_delta,
+                    max_abs_delta)
+
+                p_final = p_last + delta
+            else:
+                p_final = p_weighted
+
+            return p_final
 
         return predict_fn
 
