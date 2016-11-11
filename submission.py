@@ -100,6 +100,7 @@ def load_test_image(src):
     cv_image = cv2.resize(cv_image, (320, 240))
     cv_image = cv2.cvtColor(cv_image, cv2.COLOR_BGR2YUV)
     cv_image = cv_image[120:240, :, :]
+    cv_image[:,:,0] = cv2.equalizeHist(cv_image[:,:,0])
     cv_image = ((cv_image-(255.0/2))/255.0)
     return cv_image
 
