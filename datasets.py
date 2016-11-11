@@ -87,6 +87,19 @@ class Dataset(object):
         """
         return self.labels[self.validation_indexes - 1]
 
+    def final_generator(self, batch_size):
+        """
+        Generator over all non-validation samples.
+
+        @param batch_size - images per batch
+        @return - generator returning (images, labels) batches
+        """
+        indexes = np.concatenate([
+            self.training_indexes,
+            self.test_indexes])
+
+        return self.get_generator(batch_size, indexes, True)
+
     def training_generator(self, batch_size):
         """
         Generator over training samples.

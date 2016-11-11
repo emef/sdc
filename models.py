@@ -38,13 +38,14 @@ class BaseModel(object):
         """
         raise NotImplemented
 
-    def fit(self, dataset, training_args, callbacks=None):
+    def fit(self, dataset, training_args, callbacks=None, final=False):
         """
         Fit the model with given dataset/args.
 
         @param dataset - a Dataset
         @param training_args - dict of training args
         @param callbacks - optional list of callbacks to use
+        @param final - if True, train on all available data
         """
         raise NotImplemented
 
@@ -119,7 +120,7 @@ class CategoricalModel(BaseModel):
             logger.warning('Using old-style config, any use other than '
                            'as an encoder will fail')
 
-    def fit(self, dataset, training_args, callbacks=None):
+    def fit(self, dataset, training_args, callbacks=None, final=False):
         batch_size = training_args.get('batch_size', 100)
         epoch_size = training_args.get(
             'epoch_size', dataset.get_training_size())
@@ -129,9 +130,17 @@ class CategoricalModel(BaseModel):
 
         self.model.summary()
 
-        training_generator = (dataset
-            .training_generator(batch_size)
-            .as_categorical(self.thresholds))
+        training_generator = (
+            dataset.final_generator(batch_size) if final
+            else dataset.training_generator(batch_size))
+
+        training_generator = training_generator.as_categorical(self.thresholds)
+
+        if 'pctl_sampling' in training_args:
+            pctl_sampling = training_args['pctl_sampling']
+            pctl_thresholds = training_args.get('pctl_thresholds')
+            training_generator = (training_generator
+                .with_percentile_sampling(pctl_sampling, pctl_thresholds))
 
         validation_generator = (dataset
             .validation_generator(batch_size)
@@ -267,7 +276,7 @@ class RegressionModel(BaseModel):
     def __init__(self, model_config):
         self.model = load_model_from_uri(model_config['model_uri'])
 
-    def fit(self, dataset, training_args, callbacks=None):
+    def fit(self, dataset, training_args, callbacks=None, final=False):
         batch_size = training_args.get('batch_size', 100)
         epoch_size = training_args.get(
             'epoch_size', dataset.get_training_size())
@@ -277,7 +286,10 @@ class RegressionModel(BaseModel):
 
         self.model.summary()
 
-        training_generator = dataset.training_generator(batch_size)
+        training_generator = (
+            dataset.final_generator(batch_size) if final
+            else dataset.training_generator(batch_size))
+
         if 'pctl_sampling' in training_args:
             pctl_sampling = training_args['pctl_sampling']
             pctl_thresholds = training_args.get('pctl_thresholds')
