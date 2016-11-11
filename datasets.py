@@ -465,6 +465,7 @@ def load_image(index, images_base_path, image_file_fmt):
     """
     image_path = os.path.join(images_base_path, image_file_fmt % index)
     image = np.load(image_path)
+    image[:,:,0] = cv2.equalizeHist(image[:,:,0])
     return ((image-(255.0/2))/255.0)
 
 
