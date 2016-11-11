@@ -123,15 +123,16 @@ if __name__ == '__main__':
         }
 
     if False:
+        # half degree model
         task = {
             'task_id': task_id,
-            'dataset_uri': 's3://sdc-matt/datasets/finale_timestepped_full',
+            'dataset_uri': 's3://sdc-matt/datasets/finale_center',
             'output_uri': 's3://',
             'model_config': CategoricalModel.create(
                 's3://sdc-matt/tmp/' + task_id,
                 use_adadelta=True,
                 learning_rate=0.001,
-                thresholds=[-0.1, -0.03, 0.03, 0.1],
+                thresholds=np.linspace(-0.061, 0.061, 14)[1:-1],
                 input_shape=(120, 320, 3)),
             'training_args': {
                 'pctl_sampling': 'uniform',
