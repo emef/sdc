@@ -96,7 +96,7 @@ class Dataset(object):
         """
         indexes = np.concatenate([
             self.training_indexes,
-            self.test_indexes])
+            self.testing_indexes])
 
         return self.get_generator(batch_size, indexes, True)
 
