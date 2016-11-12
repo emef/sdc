@@ -60,24 +60,17 @@ def main():
     elif model_type == 'mixture':
         model = load_from_config({
             'type': 'mixture',
-            'sharp_split': 0.061,
-            'sharp_bias': 1.0,
             'general_regression': {
-                'model_uri': 's3://sdc-matt/regression/1478639512/model.h5',
+                'model_uri': 's3://sdc-matt/regression/1478893260/model.h5',
                 'type': 'regression'
             },
             'sharp_regression': {
-                'model_uri': 's3://sdc-matt/regression/1478642350/model.h5',
+                'model_uri': 's3://sdc-matt/regression/1478916261/model.h5',
                 'type': 'regression'
             },
-            'sign_classifier':  {
-                'model_uri': 's3://sdc-matt/categorical/1478750529/model.h5',
-                'thresholds': [0.0],
-                'type': 'categorical'
-            },
             'sharp_classifier': {
-                'model_uri': 's3://sdc-matt/categorical/1478644552/model.h5',
-                'thresholds': [0.061],
+                'model_uri': 's3://sdc-matt/categorical/1478914457/model.h5',
+                'thresholds': [-0.061, 0.061],
                 'type': 'categorical'
             },
         })
