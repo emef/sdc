@@ -165,7 +165,7 @@ if __name__ == '__main__':
             },
         }
 
-    if True:
+    if False:
         lstm_model_config = LstmModel.create(
             's3://sdc-matt/tmp/' + task_id,
             (5, 120, 320, 3),
