@@ -413,11 +413,13 @@ class MixtureModel(BaseModel):
             model_config['sharp_regression'])
         self.sharp_classifier = load_from_config(
             model_config['sharp_classifier'])
+        self.sharp_bias = np.array([.05, 1, .05].reshape(1, 3)
 
     def predict_on_batch(self, batch):
         shape = tuple([1] + list(batch.shape[1:]))
-        p_cat = self.sharp_classifier.predict_on_batch(batch)
         output = np.empty((len(batch), 1), dtype='float64')
+        p_cat = (
+            self.sharp_bias * self.sharp_classifier.predict_on_batch(batch))
 
         for i, x in enumerate(batch):
             cat = np.argmax(p_cat[i])
@@ -430,7 +432,7 @@ class MixtureModel(BaseModel):
                 p_angle = sign * self.sharp_regression.predict_on_batch(
                     x.reshape(shape))[0, 0]
 
-            output[i] = sign * p_angle / 16.
+            output[i] = p_angle / 16.
 
         return output
 

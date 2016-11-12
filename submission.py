@@ -61,7 +61,7 @@ def main():
         model = load_from_config({
             'type': 'mixture',
             'general_regression': {
-                'model_uri': 's3://sdc-matt/regression/1478893260/model.h5',
+                'model_uri': 's3://sdc-matt/regression/1478919380/model.h5',
                 'type': 'regression'
             },
             'sharp_regression': {
@@ -69,7 +69,7 @@ def main():
                 'type': 'regression'
             },
             'sharp_classifier': {
-                'model_uri': 's3://sdc-matt/categorical/1478914457/model.h5',
+                'model_uri': 's3://sdc-matt/categorical/1478913870/model.h5',
                 'thresholds': [-0.061, 0.061],
                 'type': 'categorical'
             },
