@@ -26,11 +26,11 @@ def evaluate_lstm_submission(images_path, input_shape, predictor, timesteps):
         filenames = sorted(os.listdir(images_path))
         for ind in xrange(len(filenames)):
             arr = np.empty([1, timesteps] + list(input_shape))
-            for step in xrange(steps):
+            for step in xrange(timesteps):
                 step_index = ind - step
                 if 0 <= step_index <= ind:
                   src = os.path.join(images_path, filenames[step_index])
-                  arr[0, timesteps - step -1, :, :, :] = load_test_image(src)
+                  arr[0, timesteps - step - 1, :, :, :] = load_test_image(src)
             y_pred = predictor(arr)
             filename = filenames[ind].split('.')[0]
             f.write('%s,%s\n' % (filename, y_pred))

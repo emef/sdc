@@ -414,7 +414,7 @@ class MixtureModel(BaseModel):
             model_config['sharp_regression'])
         self.sharp_classifier = load_from_config(
             model_config['sharp_classifier'])
-        self.sharp_bias = np.array([.05, 1, .05].reshape(1, 3)
+        self.sharp_bias = np.array([.05, 1, .05].reshape(1, 3))
 
     def predict_on_batch(self, batch):
         shape = tuple([1] + list(batch.shape[1:]))
@@ -453,7 +453,6 @@ class MixtureModel(BaseModel):
         mse = err_sum / err_count
         rmse = np.sqrt(mse)
         return [mse, rmse]
-
 
     def make_stateful_predictor(self,
                                 smoothing=True,
@@ -640,6 +639,7 @@ class EnsembleModel(BaseModel):
             'model_uri': ensemble_s3_uri,
             'input_model_config': self.input_model_config,
         }
+
     def output_dim(self):
         return get_output_dim(self.model)
 
@@ -782,6 +782,7 @@ class LstmModel(BaseModel):
             'model_uri': ensemble_s3_uri,
             'input_model_config': self.input_model_config,
         }
+
     def output_dim(self):
         return get_output_dim(self.model)
 
