@@ -66,7 +66,7 @@ def handle_task(task, datasets_dir):
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
     task_id = str(int(time.time()))
-    datasets_dir = "/tmp"
+    datasets_dir = "/home/ubuntu"
 
     if True:
         task = {
@@ -165,26 +165,21 @@ if __name__ == '__main__':
             },
         }
 
-    if False:
-        input_model_config = {
-            'model_uri': 's3://sdc-matt/simple/1477715388/model.h5',
-            'type': 'simple',
-            'cat_classes': 5
-        }
-
+    if True:
         lstm_model_config = LstmModel.create(
             's3://sdc-matt/tmp/' + task_id,
-            input_model_config,
-            (10, 120, 320, 3),
-            timesteps=10)
+            (5, 120, 320, 3),
+            timesteps=5,
+            W_l2=0.0001)
 
         task = {
             'task_id': task_id,
-            'dataset_uri': 's3://sdc-matt/datasets/finale_lstm_seq',
+            'dataset_uri': 's3://sdc-matt/datasets/finale_10_degrees',
             'model_config': lstm_model_config,
             'training_args': {
+                'pctl_sampling': 'uniform',
                 'batch_size': 64,
-                'epochs': 10
+                'epochs': 15,
             },
         }
 
