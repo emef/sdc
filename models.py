@@ -206,7 +206,7 @@ class CategoricalModel(BaseModel):
         output_dim = 1 if len(thresholds) == 1 else len(thresholds) + 1
 
         model = Sequential()
-        model.add(Convolution2D(5, 5, 5,
+        model.add(Convolution2D(16, 5, 5,
             input_shape=input_shape,
             init= "he_normal",
             activation='relu',
@@ -345,7 +345,7 @@ class RegressionModel(BaseModel):
         """
         """
         model = Sequential()
-        model.add(Convolution2D(5, 5, 5,
+        model.add(Convolution2D(16, 5, 5,
             input_shape=input_shape,
             init= "he_normal",
             activation='relu',
@@ -411,8 +411,6 @@ class MixtureModel(BaseModel):
             model_config['general_regression'])
         self.sharp_regression = load_from_config(
             model_config['sharp_regression'])
-        self.sign_classifier = load_from_config(
-            model_config['sign_classifier'])
         self.sharp_classifier = load_from_config(
             model_config['sharp_classifier'])
         self.sharp_split = model_config['sharp_split']
@@ -420,23 +418,21 @@ class MixtureModel(BaseModel):
 
     def predict_on_batch(self, batch):
         shape = tuple([1] + list(batch.shape[1:]))
-        p_sign = self.sign_classifier.predict_on_batch(batch)
-        p_sharp = self.sharp_classifier.predict_on_batch(batch)
+        p_cat = self.sharp_classifier.predict_on_batch(batch)
         output = np.empty((len(batch), 1), dtype='float64')
 
         for i, x in enumerate(batch):
-            sign = 1.0 if p_sign[i] > 0.5 else -1.0
-            is_sharp = p_sharp[i] * self.sharp_bias > 0.5
-            regression_model = (
-                self.general_regression if not is_sharp
-                else self.sharp_regression)
+            cat = np.argmax(p_cat[i])
+            if cat == 1:
+                p_angle = self.general_regression.predict_on_batch(
+                    x.reshape(shape))[0, 0]
+            else:
+                sign = -1.0 if cat == 0 else 1.0
+                x = x if sign == 1.0 else x[:, ::-1, :]
+                p_angle = sign * self.sharp_regression.predict_on_batch(
+                    x.reshape(shape))[0, 0]
 
-            if (sign == -1):
-                x = x[:, ::-1, :]
-
-            p_angle = regression_model.predict_on_batch(
-                x.reshape(shape))[0, 0]
-            output[i] = sign * p_angle
+            output[i] = sign * p_angle / 16.
 
         return output
 
