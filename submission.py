@@ -31,7 +31,7 @@ def evaluate_lstm_submission(images_path, input_shape, predictor, timesteps):
                 if 0 <= step_index <= ind:
                   src = os.path.join(images_path, filenames[step_index])
                   arr[0, timesteps - step - 1, :, :, :] = load_test_image(src)
-            y_pred = predictor(arr)
+            y_pred = (predictor(arr) * (3.14 / 180))
             filename = filenames[ind].split('.')[0]
             f.write('%s,%s\n' % (filename, y_pred))
 
