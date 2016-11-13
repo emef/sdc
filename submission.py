@@ -63,7 +63,7 @@ def main():
         timesteps = 5
         model = load_from_config({
             'type': 'lstm',
-            'model_uri': 's3://sdc-matt/lstm/1478956914/lstm.h5',
+            'model_uri': 's3://sdc-matt/lstm/1479020360/lstm.h5',
             'timesteps': timesteps
         })
 
