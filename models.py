@@ -721,10 +721,6 @@ class LstmModel(BaseModel):
 
         batch, _ = (dataset.training_generator(batch_size).next())
 
-        # NOTE: for some reason if I don't call this then everything breaks
-        # TODO: why?
-        input_model.predict_on_batch(batch)
-
         training_generator = (dataset
             .training_generator(batch_size)
             .with_timesteps('timestepped_images', timesteps=timesteps))
