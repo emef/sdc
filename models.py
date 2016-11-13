@@ -770,7 +770,6 @@ class LstmModel(BaseModel):
             'type': LstmModel.TYPE,
             'timesteps': self.timesteps,
             'model_uri': ensemble_s3_uri,
-            'input_model_config': self.input_model_config,
         }
 
     def output_dim(self):
