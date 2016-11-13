@@ -65,7 +65,7 @@ def main():
             'type': 'lstm',
             'model_uri': 's3://sdc-matt/lstm/1478956914/lstm.h5',
             'timesteps': timesteps
-        }
+        })
 
         model.model.summary()
         predictor = lambda x: model.predict_on_batch(x)[0][0]

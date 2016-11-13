@@ -414,7 +414,7 @@ class MixtureModel(BaseModel):
             model_config['sharp_regression'])
         self.sharp_classifier = load_from_config(
             model_config['sharp_classifier'])
-        self.sharp_bias = np.array([.05, 1, .05].reshape(1, 3))
+        self.sharp_bias = np.array([.05, 1, .05]).reshape(1, 3)
 
     def predict_on_batch(self, batch):
         shape = tuple([1] + list(batch.shape[1:]))
@@ -702,11 +702,6 @@ class LstmModel(BaseModel):
     TYPE = 'lstm'
 
     def __init__(self, model_config):
-        self.input_model_config = model_config['input_model_config']
-        self.input_model = load_from_config(
-            self.input_model_config
-        ).as_encoder()
-
         self.model = load_model_from_uri(
             model_config['model_uri'])
 
@@ -720,7 +715,6 @@ class LstmModel(BaseModel):
         batch_size = training_args.get('batch_size', 100)
         epochs = training_args.get('epochs', 5)
 
-        input_model = self.input_model
         timesteps = self.timesteps
 
         self.model.summary()
