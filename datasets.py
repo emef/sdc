@@ -324,7 +324,7 @@ class InfiniteImageLoadingGenerator(object):
             image_file_fmt=self.image_file_fmt,
             shuffle_on_exhaust=self.shuffle_on_exhaust,
             cat_thresholds=self.cat_thresholds,
-            pctl_sampling=self.pct_sampling,
+            pctl_sampling=self.pctl_sampling,
             pctl_thresholds=self.pctl_thresholds,
             timesteps=timesteps,
             timestep_noise=timestep_noise,
@@ -353,7 +353,7 @@ class InfiniteImageLoadingGenerator(object):
             image_file_fmt=self.image_file_fmt,
             shuffle_on_exhaust=self.shuffle_on_exhaust,
             cat_thresholds=self.cat_thresholds,
-            pctl_sampling=self.pct_sampling,
+            pctl_sampling=self.pctl_sampling,
             pctl_thresholds=self.pctl_thresholds,
             timesteps=timesteps,
             timestep_noise=timestep_noise,
@@ -447,6 +447,9 @@ class InfiniteImageLoadingGenerator(object):
             raise NotImplementedError
 
         for i, next_image_index in enumerate(next_indexes):
+            if next_image_index == 0:
+                next_image_index = 1
+
             image = self.load_image(next_image_index)
 
             # image indexes are 1-indexed

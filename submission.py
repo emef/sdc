@@ -10,6 +10,31 @@ from scipy.stats.mstats import mquantiles
 from datasets import load_dataset
 from models import load_from_config
 
+def evaluate_submission(images_path, input_shape, predictor):
+    with open('submission.%s.csv' % int(time.time()), 'w') as f:
+        f.write('frame_id,steering_angle\n')
+        for filename in sorted(os.listdir(images_path)):
+            src = os.path.join(images_path, filename)
+            x = load_test_image(src).reshape((1, ) + input_shape)
+            y_pred = predictor(x)
+            filename = filename.split('.')[0]
+            f.write('%s,%s\n' % (filename, y_pred))
+
+def evaluate_lstm_submission(images_path, input_shape, predictor, timesteps):
+    with open('submission.%s.csv' % int(time.time()), 'w') as f:
+        f.write('frame_id,steering_angle\n')
+        filenames = sorted(os.listdir(images_path))
+        for ind in xrange(len(filenames)):
+            arr = np.empty([1, timesteps] + list(input_shape))
+            for step in xrange(timesteps):
+                step_index = ind - step
+                if 0 <= step_index <= ind:
+                  src = os.path.join(images_path, filenames[step_index])
+                  arr[0, timesteps - step - 1, :, :, :] = load_test_image(src)
+            y_pred = (predictor(arr) * (3.14 / 180))
+            filename = filenames[ind].split('.')[0]
+            f.write('%s,%s\n' % (filename, y_pred))
+
 def main():
     images_path = '/media/drive/Challenge 2/Test/center'
     input_shape = (120, 320, 3)
@@ -32,21 +57,19 @@ def main():
 
         model.model.summary()
         predictor = model.make_stateful_predictor(True)
+        evaluate_submission(images_path, input_shape, predictor)
 
     elif model_type == 'lstm':
+        timesteps = 5
         model = load_from_config({
             'type': 'lstm',
-            'input_model_config': {
-                'model_uri': 's3://sdc-matt/simple/1477715388/model.h5',
-                'type': 'simple',
-                'cat_classes': 5,
-            },
-            'model_uri': 's3://sdc-matt/lstm/1477805095/lstm.h5',
-            'timesteps': 9
+            'model_uri': 's3://sdc-matt/lstm/1479020360/lstm.h5',
+            'timesteps': timesteps
         })
 
         model.model.summary()
         predictor = lambda x: model.predict_on_batch(x)[0][0]
+        evaluate_lstm_submission(images_path, input_shape, predictor, timesteps)
 
     elif model_type == 'regression':
         model = load_from_config({
@@ -56,6 +79,7 @@ def main():
 
         model.model.summary()
         predictor = lambda x: model.predict_on_batch(x)[0][0]
+        evaluate_submission(images_path, input_shape, predictor)
 
     elif model_type == 'mixture':
         model = load_from_config({
@@ -78,15 +102,7 @@ def main():
         predictor = model.make_stateful_predictor(
             smoothing=True,
             interpolation_weight=0.5)
-
-    with open('submission.%s.csv' % int(time.time()), 'w') as f:
-        f.write('frame_id,steering_angle\n')
-        for filename in sorted(os.listdir(images_path)):
-            src = os.path.join(images_path, filename)
-            x = load_test_image(src).reshape((1, ) + input_shape)
-            y_pred = predictor(x)
-            filename = filename.split('.')[0]
-            f.write('%s,%s\n' % (filename, y_pred))
+        evaluate_submission(images_path, input_shape, predictor)
 
 def load_test_image(src):
     cv_image = cv2.imread(src)

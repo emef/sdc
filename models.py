@@ -12,6 +12,7 @@ from keras.layers.convolutional import Convolution2D, MaxPooling2D
 from keras.layers.recurrent import LSTM
 from keras.layers.wrappers import TimeDistributed
 from keras.models import Sequential
+from keras.models import model_from_json
 from keras.models import load_model as keras_load_model
 from keras.optimizers import SGD
 from keras.regularizers import l2
@@ -178,7 +179,7 @@ class CategoricalModel(BaseModel):
         deep_copy = deep_copy_model(self.model)
         for _ in xrange(4):
             deep_copy.pop()
-        return deep_copy_model(deep_copy)
+        return deep_copy_model_weights(deep_copy)
 
     def output_dim(self):
         return get_output_dim(self.model)
@@ -321,7 +322,7 @@ class RegressionModel(BaseModel):
         deep_copy = deep_copy_model(self.model)
         for _ in xrange(4):
             deep_copy.pop()
-        return deep_copy_model(deep_copy)
+        return deep_copy_model_weights(deep_copy)
 
     def output_dim(self):
         return get_output_dim(self.model)
@@ -452,7 +453,6 @@ class MixtureModel(BaseModel):
         mse = err_sum / err_count
         rmse = np.sqrt(mse)
         return [mse, rmse]
-
 
     def make_stateful_predictor(self,
                                 smoothing=True,
@@ -640,6 +640,9 @@ class EnsembleModel(BaseModel):
             'input_model_config': self.input_model_config,
         }
 
+    def output_dim(self):
+        return get_output_dim(self.model)
+
     @classmethod
     def create(cls,
                model_uri,
@@ -699,11 +702,6 @@ class LstmModel(BaseModel):
     TYPE = 'lstm'
 
     def __init__(self, model_config):
-        self.input_model_config = model_config['input_model_config']
-        self.input_model = load_from_config(
-            self.input_model_config
-        ).as_encoder()
-
         self.model = load_model_from_uri(
             model_config['model_uri'])
 
@@ -717,16 +715,11 @@ class LstmModel(BaseModel):
         batch_size = training_args.get('batch_size', 100)
         epochs = training_args.get('epochs', 5)
 
-        input_model = self.input_model
         timesteps = self.timesteps
 
         self.model.summary()
 
         batch, _ = (dataset.training_generator(batch_size).next())
-
-        # NOTE: for some reason if I don't call this then everything breaks
-        # TODO: why?
-        input_model.predict_on_batch(batch)
 
         training_generator = (dataset
             .training_generator(batch_size)
@@ -738,6 +731,7 @@ class LstmModel(BaseModel):
 
         # NOTE: can't use fit with parallel loading or it locks up
         # TODO: why?
+        callbacks = (callbacks or [])
         history = self.model.fit_generator(
             training_generator,
             validation_data=validation_generator,
@@ -745,7 +739,7 @@ class LstmModel(BaseModel):
             nb_val_samples=validation_size,
             nb_epoch=epochs,
             verbose=1,
-            callbacks=(callbacks or []))
+            callbacks=callbacks)
 
     def evaluate(self, dataset):
         batch_size = 32
@@ -765,13 +759,8 @@ class LstmModel(BaseModel):
         mse = err_sum / err_count
         return [mse]
 
-    def predict_on_batch(self, batch):
-        inputs = np.empty([len(batch)] + [self.timesteps] + list(batch[0].shape))
-        for index in xrange(len(batch)):
-            for step in xrange(self.timesteps):
-                if (index - step) >= 0:
-                    inputs[index, self.timesteps - step - 1, :, :, :] = batch[index - step]
-        return self.model.predict_on_batch(inputs)
+    def predict_on_batch(self, sequence):
+        return self.model.predict_on_batch(sequence)
 
     def save(self, task_id):
         ensemble_s3_uri = 's3://sdc-matt/lstm/%s/lstm.h5' % task_id
@@ -781,14 +770,16 @@ class LstmModel(BaseModel):
             'type': LstmModel.TYPE,
             'timesteps': self.timesteps,
             'model_uri': ensemble_s3_uri,
-            'input_model_config': self.input_model_config,
         }
+
+    def output_dim(self):
+        return get_output_dim(self.model)
 
     @classmethod
     def create(cls,
       model_uri,
-      input_model_config,
       input_shape,
+      batch_size=64,
       timesteps=0,
       loss='mean_squared_error',
       learning_rate=0.001,
@@ -799,9 +790,8 @@ class LstmModel(BaseModel):
         Creates an LstmModel using a model in the input_model_config
 
         @param model_uri - s3 uri to save the model
-        @param input_model_config - model to use as the input time distributed layer
-                                  in the lstm
         @param input_shape - timestepped shape (timesteps, feature dims)
+        @param batch_input_shape - (batch_size, feature dims)
         @param timesteps - timesteps inclusive of the current frame
                          (10 - current frame + 9 previous frames)
         @param loss - loss function on the model
@@ -811,21 +801,50 @@ class LstmModel(BaseModel):
         @param metrics - metrics to track - (rmse, mse...)
         """
 
-        input_model = load_from_config(input_model_config).as_encoder()
-        metrics = metrics or ['mse']
-        sgd = SGD(lr=learning_rate,
-            momentum=momentum,
-            nesterov=False)
+        metrics = metrics or ['rmse']
 
         model = Sequential()
-        model.add(TimeDistributed(input_model, input_shape=input_shape))
-        model.add(LSTM(256))
+        model.add(TimeDistributed(Convolution2D(24, 5, 5,
+            init= "he_normal",
+            activation='relu',
+            subsample=(5, 4),
+            border_mode='valid'), input_shape=input_shape))
+        model.add(TimeDistributed(Convolution2D(32, 5, 5,
+            init= "he_normal",
+            activation='relu',
+            subsample=(3, 2),
+            border_mode='valid')))
+        model.add(TimeDistributed(Convolution2D(48, 3, 3,
+            init= "he_normal",
+            activation='relu',
+            subsample=(1,2),
+            border_mode='valid')))
+        model.add(TimeDistributed(Convolution2D(64, 3, 3,
+            init= "he_normal",
+            activation='relu',
+            border_mode='valid')))
+        model.add(TimeDistributed(Convolution2D(128, 3, 3,
+            init= "he_normal",
+            activation='relu',
+            subsample=(1,2),
+            border_mode='valid')))
+        model.add(TimeDistributed(Flatten()))
+        model.add(LSTM(64, dropout_W=0.2, dropout_U=0.2, return_sequences=True))
+        model.add(LSTM(64, dropout_W=0.2, dropout_U=0.2, return_sequences=True))
+        model.add(LSTM(64, dropout_W=0.2, dropout_U=0.2))
+        model.add(Dropout(0.2))
+        model.add(Dense(
+            output_dim=32,
+            init='he_normal',
+            activation='relu',
+            W_regularizer=l2(W_l2)))
+        model.add(Dropout(0.2))
         model.add(Dense(
             output_dim=1,
             init='he_normal',
             W_regularizer=l2(W_l2)))
 
-        model.compile(loss=loss, optimizer=sgd, metrics=metrics)
+        model.compile(loss=loss, optimizer='adadelta', metrics=metrics)
 
         # Upload the model to designated path
         upload_model(model, model_uri)
@@ -834,7 +853,6 @@ class LstmModel(BaseModel):
             'type': LstmModel.TYPE,
             'timesteps': timesteps,
             'model_uri': model_uri,
-            'input_model_config': input_model_config,
         }
 
 MODEL_CLASS_BY_TYPE = {
@@ -907,10 +925,39 @@ def deep_copy_model(model):
     _, tmp_path = tempfile.mkstemp()
     try:
         model.save(tmp_path)
-        return keras_load_model(tmp_path)
+        input_model = keras_load_model(tmp_path)
+        return input_model
     finally:
         os.remove(tmp_path)
 
+def deep_copy_model_weights(model):
+    """
+    Create a deep copy of a tensorflow model weights.
+
+    @param model - tensorflow model
+    @return - copy of model
+    """
+    _, tmp_path_json = tempfile.mkstemp()
+    _, tmp_path_weights = tempfile.mkstemp()
+    try:
+        # serialize model to JSON
+        model_json = model.to_json()
+        with open(tmp_path_json, "w") as json_file:
+            json_file.write(model_json)
+        # serialize weights to HDF5
+        model.save_weights(tmp_path_weights)
+
+        # load json and create model
+        json_file = open(tmp_path_json, 'r')
+        loaded_model_json = json_file.read()
+        json_file.close()
+        loaded_model = model_from_json(loaded_model_json)
+        # load weights into new model
+        loaded_model.load_weights(tmp_path_weights)
+        return loaded_model
+    finally:
+        os.remove(tmp_path_json)
+        os.remove(tmp_path_weights)
 
 def get_output_dim(model):
     """
