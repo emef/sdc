@@ -3,11 +3,8 @@ Loading/saving datasets.
 """
 import logging, multiprocessing, os, shutil, subprocess, traceback
 
-# only needed for generating datasets
-try:
-    import cv2
-    import pandas as pd
-except: pass
+import cv2
+import pandas as pd
 
 from keras.utils.np_utils import to_categorical
 import numpy as np
@@ -362,6 +359,26 @@ class InfiniteImageLoadingGenerator(object):
             timestep_noise=timestep_noise,
             timestep_dropout=timestep_dropout,
             generator_type=generator_type)
+
+    def precompute_transform(self, transform_model):
+        batch_size = self.batch_size
+        output_dim = transform_model.output_dim()
+        n_samples = len(self.indexes)
+        n_batches = n_samples / batch_size
+        n_batches += 1 if (n_batches * batch_size) != n_samples else 0
+        transformed = np.empty((n_samples, output_dim))
+
+        for batch_no in xrange(n_batches):
+            start = batch_no * batch_size
+            end = max((batch_no + 1) * batch_size, n_samples - 1)
+            size = end - start
+            batch = np.empty([size] + self.image_shape)
+
+            for i in xrange(size):
+                batch[i] = self.load_image(self.indexes[start + i])
+
+            transformed[start:end] = transform_model.predict_on_batch(batch)
+
 
     def __iter__(self):
         return self
