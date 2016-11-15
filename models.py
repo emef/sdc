@@ -413,7 +413,7 @@ class MixtureModel(BaseModel):
             model_config['sharp_regression'])
         self.sharp_classifier = load_from_config(
             model_config['sharp_classifier'])
-        self.sharp_bias = np.array([.05, 1, .05].reshape(1, 3)
+        self.sharp_bias = np.array([.05, 1, .05]).reshape(1, 3)
 
     def predict_on_batch(self, batch):
         shape = tuple([1] + list(batch.shape[1:]))
