@@ -194,7 +194,8 @@ class InfiniteImageLoadingGenerator(object):
                  pctl_sampling='none',
                  pctl_thresholds=None,
                  timesteps=None,
-                 precomputed=None):
+                 precomputed=None,
+                 scale=1.0):
         """
         @param batch_size - number of images to generate per batch
         @param indexes - array (N,) of image index IDs
@@ -207,6 +208,7 @@ class InfiniteImageLoadingGenerator(object):
         @param pctl_thresholds - override percentile thresholds.
         @param timesteps - appends this many previous labels to end of samples
         @param precomputed - precomputed input data {index: data}
+        @param scale - scaling factor to apply to labels
         """
         self.batch_size = batch_size
         self.indexes = indexes
@@ -219,6 +221,7 @@ class InfiniteImageLoadingGenerator(object):
         self.pctl_thresholds = pctl_thresholds
         self.timesteps = timesteps
         self.precomputed = precomputed
+        self.scale = scale
 
         self.image_shape = list(self.load_image(self.indexes[0]).shape)
 
@@ -251,10 +254,31 @@ class InfiniteImageLoadingGenerator(object):
                 self.labels = to_categorical(binned_labels)
                 self.label_shape = list(self.labels.shape[1:])
         else:
-            self.labels = self.orig_labels
+            self.labels = self.orig_labels * self.scale
             self.label_shape = [1]
 
         self.current_index = 0
+
+    def get_batch_size(self):
+        return self.batch_size
+
+    def get_size(self):
+        return len(self.indexes)
+
+    def scale_labels(self, scale):
+        return InfiniteImageLoadingGenerator(
+            batch_size=self.batch_size,
+            indexes=self.indexes,
+            labels=self.orig_labels,
+            images_base_path=self.images_base_path,
+            image_file_fmt=self.image_file_fmt,
+            shuffle_on_exhaust=self.shuffle_on_exhaust,
+            cat_thresholds=self.cat_thresholds,
+            pctl_sampling=self.pctl_sampling,
+            pctl_thresholds=self.pctl_thresholds,
+            timesteps=self.timesteps,
+            precomputed=self.precomputed,
+            scale=scale)
 
     def as_categorical(self, cat_thresholds):
         return InfiniteImageLoadingGenerator(
@@ -268,7 +292,8 @@ class InfiniteImageLoadingGenerator(object):
             pctl_sampling=self.pctl_sampling,
             pctl_thresholds=self.pctl_thresholds,
             timesteps=self.timesteps,
-            precomputed=self.precomputed)
+            precomputed=self.precomputed,
+            scale=self.scale)
 
     def with_percentile_sampling(self,
                                  pctl_sampling='uniform',
@@ -292,7 +317,8 @@ class InfiniteImageLoadingGenerator(object):
             pctl_sampling=pctl_sampling,
             pctl_thresholds=pctl_thresholds,
             timesteps=self.timesteps,
-            precomputed=self.precomputed)
+            precomputed=self.precomputed,
+            scale=self.scale)
 
     def with_timesteps(self, timesteps=None):
         """
@@ -312,7 +338,8 @@ class InfiniteImageLoadingGenerator(object):
             pctl_sampling=self.pctl_sampling,
             pctl_thresholds=self.pctl_thresholds,
             timesteps=timesteps,
-            precomputed=self.precomputed)
+            precomputed=self.precomputed,
+            scale=self.scale)
 
     def precompute_transform(self, transform_model):
         """
@@ -362,7 +389,8 @@ class InfiniteImageLoadingGenerator(object):
             pctl_sampling=self.pctl_sampling,
             pctl_thresholds=self.pctl_thresholds,
             timesteps=self.timesteps,
-            precomputed=precomputed)
+            precomputed=precomputed,
+            scale=self.scale)
 
     def with_precomputed(self, precomputed):
         return InfiniteImageLoadingGenerator(
@@ -376,7 +404,8 @@ class InfiniteImageLoadingGenerator(object):
             pctl_sampling=self.pctl_sampling,
             pctl_thresholds=self.pctl_thresholds,
             timesteps=self.timesteps,
-            precomputed=precomputed)
+            precomputed=precomputed,
+            scale=self.scale)
 
     def __iter__(self):
         return self
@@ -508,7 +537,7 @@ def load_dataset(s3_uri, cache_dir='/tmp'):
         download_dir(s3_uri, dataset_path)
 
     # Load the dataset from the local directory
-    labels = np.load(os.path.join(dataset_path, 'labels.npy')) * 16.
+    labels = np.load(os.path.join(dataset_path, 'labels.npy'))
 
     training_indexes = (np
         .load(os.path.join(dataset_path, 'training_indexes.npy'))

@@ -83,6 +83,7 @@ if __name__ == '__main__':
                 },
                 timesteps=10,
                 W_l2=0.001,
+                scale=16.,
                 input_shape=(120, 320, 3)),
             'training_args': {
                 'batch_size': 32,

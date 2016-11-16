@@ -276,6 +276,7 @@ class RegressionModel(BaseModel):
 
     def __init__(self, model_config):
         self.model = load_model_from_uri(model_config['model_uri'])
+        self.scale = model_config.get('scale', 1.0)
 
     def fit(self, dataset, training_args, callbacks=None, final=False):
         batch_size = training_args.get('batch_size', 100)
@@ -297,9 +298,14 @@ class RegressionModel(BaseModel):
             training_generator = (training_generator
                 .with_percentile_sampling(pctl_sampling, pctl_thresholds))
 
+        training_generator = training_generator.scale_labels(self.scale)
+        validation_generator = (dataset
+            .validation_generator(batch_size)
+            .scale_labels(self.scale))
+
         history = self.model.fit_generator(
             training_generator,
-            validation_data=dataset.validation_generator(batch_size),
+            validation_data=validation_generator,
             samples_per_epoch=epoch_size,
             nb_val_samples=validation_size,
             nb_epoch=epochs,
@@ -309,13 +315,11 @@ class RegressionModel(BaseModel):
         return history
 
     def evaluate(self, dataset):
-        n_testing = dataset.get_testing_size()
-        return  self.model.evaluate_generator(
-            dataset.testing_generator(256),
-            (n_testing / 256) * 256)
+        generator = dataset.testing_generator(32)
+        return std_evaluate(self, generator)
 
     def predict_on_batch(self, batch):
-        return self.model.predict_on_batch(batch)
+        return self.model.predict_on_batch(batch) / self.scale
 
     def as_encoder(self):
         # remove the last output layers to retain the feature maps
@@ -334,6 +338,7 @@ class RegressionModel(BaseModel):
         return {
             'type': RegressionModel.TYPE,
             'model_uri': s3_uri,
+            'scale': self.scale,
         }
 
     @classmethod
@@ -342,7 +347,8 @@ class RegressionModel(BaseModel):
                input_shape=(120, 320, 3),
                use_adadelta=True,
                learning_rate=0.01,
-               W_l2=0.0001):
+               W_l2=0.0001,
+               scale=16):
         """
         """
         model = Sequential()
@@ -399,6 +405,7 @@ class RegressionModel(BaseModel):
         return {
             'type': RegressionModel.TYPE,
             'model_uri': model_uri,
+            'scale': scale,
         }
 
 
@@ -864,6 +871,7 @@ class TransferLstmModel(BaseModel):
         self.transform_model = load_from_config(self.transform_model_config)
         self.model = load_model_from_uri(model_config['model_uri'])
         self.timesteps = model_config['timesteps']
+        self.scale = model_config.get('scale', 1.0)
 
     def fit(self, dataset, training_args, callbacks=None):
         validation_size = training_args.get(
@@ -879,11 +887,13 @@ class TransferLstmModel(BaseModel):
 
         training_generator = (dataset
             .training_generator(batch_size)
+            .scale_labels(self.scale)
             .precompute_transform(self.transform_model)
             .with_timesteps(timesteps=timesteps))
 
         validation_generator = (dataset
             .validation_generator(batch_size)
+            .scale_labels(self.scale)
             .with_precomputed(training_generator.precomputed)
             .with_timesteps(timesteps=timesteps))
 
@@ -898,27 +908,16 @@ class TransferLstmModel(BaseModel):
             callbacks=callbacks)
 
     def evaluate(self, dataset):
-        batch_size = 32
-        testing_size = dataset.get_testing_size()
         testing_generator = (dataset
-            .testing_generator(batch_size)
+            .testing_generator(32)
             .precompute_transform(self.transform_model)
             .with_timesteps(timesteps=self.timesteps))
-        n_batches = testing_size / batch_size
 
-        err_sum = 0.
-        err_count = 0.
-        for _ in xrange(n_batches):
-            X_batch, y_batch = testing_generator.next()
-            y_pred = self.model.predict_on_batch(X_batch)
-            err_sum += np.sum((y_batch - y_pred) ** 2)
-            err_count += len(y_pred)
-        mse = err_sum / err_count
-        return [mse, np.sqrt(mse)]
+        return std_evaluate(self, testing_generator)
 
     def predict_on_batch(self, batch):
         transformed = self.transform_model.predict_on_batch(batch)
-        return self.model.predict_on_batch(transformed)
+        return self.model.predict_on_batch(transformed) / self.scale
 
     def save(self, task_id):
         output_uri = 's3://sdc-matt/transfer-lstm/%s/model.h5' % task_id
@@ -929,6 +928,7 @@ class TransferLstmModel(BaseModel):
             'timesteps': self.timesteps,
             'model_uri': output_uri,
             'transform_model_config': self.transform_model_config,
+            'scale': self.scale,
         }
 
     def output_dim(self):
@@ -942,6 +942,7 @@ class TransferLstmModel(BaseModel):
                batch_size=16,
                timesteps=3,
                W_l2=0.001,
+               scale=16,
                metrics=None):
         """
         Creates a TransferLstmModel
@@ -1001,6 +1002,7 @@ class TransferLstmModel(BaseModel):
             'timesteps': timesteps,
             'model_uri': model_uri,
             'transform_model_config': transform_model_config,
+            'scale': scale,
         }
 
 
@@ -1121,6 +1123,26 @@ def get_output_dim(model):
             return layer.output_shape[-1]
 
     raise ValueError('Could not infer output dim')
+
+
+def std_evaluate(model, generator):
+    """
+    """
+    size = generator.get_size()
+    batch_size = generator.get_batch_size()
+    n_batches = size / batch_size
+
+    err_sum = 0.
+    err_count = 0.
+    for _ in xrange(n_batches):
+        X_batch, y_batch = generator.next()
+        y_pred = model.predict_on_batch(X_batch)
+        err_sum += np.sum((y_batch - y_pred) ** 2)
+        err_count += len(y_pred)
+
+    mse = err_sum / err_count
+    return [mse, np.sqrt(mse)]
+
 
 def rmse(y_true, y_pred):
     '''Calculates RMSE
