@@ -1,9 +1,5 @@
 import logging, os, subprocess, sys, tempfile, time
 
-from boto.s3.bucket import Bucket
-from boto.s3.connection import S3Connection
-from boto.s3.key import Key
-
 logger = logging.getLogger(__name__)
 
 

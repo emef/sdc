@@ -14,7 +14,7 @@ from keras.layers.wrappers import TimeDistributed
 from keras.models import Sequential
 from keras.models import model_from_json
 from keras.models import load_model as keras_load_model
-from keras.optimizers import SGD
+from keras.optimizers import RMSprop, SGD
 from keras.regularizers import l2
 import numpy as np
 from scipy.stats.mstats import mquantiles
@@ -723,14 +723,12 @@ class LstmModel(BaseModel):
 
         training_generator = (dataset
             .training_generator(batch_size)
-            .with_timesteps('timestepped_images', timesteps=timesteps))
+            .with_timesteps(timesteps))
 
         validation_generator = (dataset
             .validation_generator(batch_size)
-            .with_timesteps('timestepped_images', timesteps=timesteps))
+            .with_timesteps(timesteps))
 
-        # NOTE: can't use fit with parallel loading or it locks up
-        # TODO: why?
         callbacks = (callbacks or [])
         history = self.model.fit_generator(
             training_generator,
@@ -746,7 +744,7 @@ class LstmModel(BaseModel):
         testing_size = dataset.get_testing_size()
         testing_generator = (dataset
             .testing_generator(batch_size)
-            .with_timesteps('timestepped_images', timesteps=self.timesteps))
+            .with_timesteps(self.timesteps))
         n_batches = testing_size / batch_size
 
         err_sum = 0.
@@ -855,12 +853,164 @@ class LstmModel(BaseModel):
             'model_uri': model_uri,
         }
 
+
+class TransferLstmModel(BaseModel):
+    """
+    """
+    TYPE = 'transfer-lstm'
+
+    def __init__(self, model_config):
+        self.transform_model_config = model_config['transform_model_config']
+        self.transform_model = load_from_config(self.transform_model_config)
+        self.model = load_model_from_uri(model_config['model_uri'])
+        self.timesteps = model_config['timesteps']
+
+    def fit(self, dataset, training_args, callbacks=None):
+        validation_size = training_args.get(
+            'validation_size', dataset.get_validation_size())
+        epoch_size = training_args.get(
+            'epoch_size', dataset.get_training_size())
+        batch_size = training_args.get('batch_size', 100)
+        epochs = training_args.get('epochs', 5)
+
+        timesteps = self.timesteps
+
+        self.model.summary()
+
+        training_generator = (dataset
+            .training_generator(batch_size)
+            .precompute_transform(self.transform_model)
+            .with_timesteps(timesteps=timesteps))
+
+        validation_generator = (dataset
+            .validation_generator(batch_size)
+            .with_precomputed(training_generator.precomputed)
+            .with_timesteps(timesteps=timesteps))
+
+        callbacks = (callbacks or [])
+        history = self.model.fit_generator(
+            training_generator,
+            validation_data=validation_generator,
+            samples_per_epoch=epoch_size,
+            nb_val_samples=validation_size,
+            nb_epoch=epochs,
+            verbose=1,
+            callbacks=callbacks)
+
+    def evaluate(self, dataset):
+        batch_size = 32
+        testing_size = dataset.get_testing_size()
+        testing_generator = (dataset
+            .testing_generator(batch_size)
+            .precompute_transform(self.transform_model)
+            .with_timesteps(timesteps=self.timesteps))
+        n_batches = testing_size / batch_size
+
+        err_sum = 0.
+        err_count = 0.
+        for _ in xrange(n_batches):
+            X_batch, y_batch = testing_generator.next()
+            y_pred = self.model.predict_on_batch(X_batch)
+            err_sum += np.sum((y_batch - y_pred) ** 2)
+            err_count += len(y_pred)
+        mse = err_sum / err_count
+        return [mse, np.sqrt(mse)]
+
+    def predict_on_batch(self, batch):
+        transformed = self.transform_model.predict_on_batch(batch)
+        return self.model.predict_on_batch(transformed)
+
+    def save(self, task_id):
+        output_uri = 's3://sdc-matt/transfer-lstm/%s/model.h5' % task_id
+        upload_model(self.model, output_uri)
+
+        return {
+            'type': TransferLstmModel.TYPE,
+            'timesteps': self.timesteps,
+            'model_uri': output_uri,
+            'transform_model_config': self.transform_model_config,
+        }
+
+    def output_dim(self):
+        return get_output_dim(self.model)
+
+    @classmethod
+    def create(cls,
+               model_uri,
+               transform_model_config,
+               input_shape,
+               batch_size=16,
+               timesteps=3,
+               W_l2=0.001,
+               metrics=None):
+        """
+        Creates a TransferLstmModel
+
+        @param model_uri - s3 uri to save the model
+        @param input_shape - timestepped shape (timesteps, feature dims)
+        @param transform_model_config - transform model config
+        @param input_shape - (batch_size, feature dims..)
+        @param timesteps - timesteps inclusive of the current frame
+                         (10 - current frame + 9 previous frames)
+        @param W_l2 - l2 regularization weight
+        @param metrics - metrics to track - (rmse, mse...)
+        """
+        metrics = metrics or ['rmse']
+
+        transform_model = load_from_config(transform_model_config)
+        input_dim = get_output_dim(transform_model.as_encoder())
+
+        model = Sequential()
+        model.add(LSTM(
+            64,
+            input_shape=(timesteps, input_dim),
+            dropout_W=0.2,
+            dropout_U=0.2,
+            return_sequences=True))
+        model.add(LSTM(
+            64,
+            dropout_W=0.2,
+            dropout_U=0.2,
+            return_sequences=True))
+        model.add(LSTM(
+            64,
+            dropout_W=0.2,
+            dropout_U=0.2))
+        model.add(Dropout(0.2))
+        model.add(Dense(
+            output_dim=256,
+            init='he_normal',
+            activation='relu',
+            W_regularizer=l2(W_l2)))
+        model.add(Dropout(0.2))
+        model.add(Dense(
+            output_dim=1,
+            init='he_normal',
+            W_regularizer=l2(W_l2)))
+
+        model.compile(
+            loss='mean_squared_error',
+            optimizer='adadelta',
+            metrics=metrics)
+
+        # Upload the model to designated path
+        upload_model(model, model_uri)
+
+        return {
+            'type': TransferLstmModel.TYPE,
+            'timesteps': timesteps,
+            'model_uri': model_uri,
+            'transform_model_config': transform_model_config,
+        }
+
+
 MODEL_CLASS_BY_TYPE = {
     'simple': CategoricalModel,  # backwards compat
     CategoricalModel.TYPE: CategoricalModel,
     EnsembleModel.TYPE: EnsembleModel,
     RegressionModel.TYPE: RegressionModel,
     LstmModel.TYPE: LstmModel,
+    TransferLstmModel.TYPE: TransferLstmModel,
     MixtureModel.TYPE: MixtureModel,
 }
 

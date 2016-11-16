@@ -1,16 +1,24 @@
 """
 Loading/saving datasets.
 """
-import logging, multiprocessing, os, shutil, subprocess, traceback
+import logging
+import multiprocessing
+import os
+import pickle
+import shutil
+import subprocess
+import traceback
 
 import cv2
 import pandas as pd
 
 from keras.utils.np_utils import to_categorical
 import numpy as np
+from progress.bar import IncrementalBar
 import requests
 from scipy.stats.mstats import mquantiles
 
+from models import get_output_dim
 from util import download_dir, parse_s3_uri, upload_dir
 
 logger = logging.getLogger(__name__)
@@ -175,8 +183,6 @@ class InfiniteImageLoadingGenerator(object):
     Iterable object which loads the next batch of (image, label) tuples
     in the data set.
     """
-    GENERATOR_TYPE = ['timestepped_labels', 'timestepped_images']
-
     def __init__(self,
                  batch_size,
                  indexes,
@@ -187,11 +193,8 @@ class InfiniteImageLoadingGenerator(object):
                  cat_thresholds=None,
                  pctl_sampling='none',
                  pctl_thresholds=None,
-                 timesteps=0,
-                 timestep_noise=0,
-                 timestep_dropout=0,
-                 transform_model=None,
-                 generator_type='timestepped_labels'):
+                 timesteps=None,
+                 precomputed=None):
         """
         @param batch_size - number of images to generate per batch
         @param indexes - array (N,) of image index IDs
@@ -203,9 +206,7 @@ class InfiniteImageLoadingGenerator(object):
         @param pctl_sampling - type of percentile sampling.
         @param pctl_thresholds - override percentile thresholds.
         @param timesteps - appends this many previous labels to end of samples
-        @param timestep_noise - +/- random noise factor
-        @param timestep_dropout - % change to drop a prev label
-        @param transform_model - tensorflow model to transform images
+        @param precomputed - precomputed input data {index: data}
         """
         self.batch_size = batch_size
         self.indexes = indexes
@@ -217,9 +218,7 @@ class InfiniteImageLoadingGenerator(object):
         self.pctl_sampling = pctl_sampling
         self.pctl_thresholds = pctl_thresholds
         self.timesteps = timesteps
-        self.timestep_noise = timestep_noise
-        self.timestep_dropout = timestep_dropout
-        self.transform_model = transform_model
+        self.precomputed = precomputed
 
         self.image_shape = list(self.load_image(self.indexes[0]).shape)
 
@@ -255,9 +254,6 @@ class InfiniteImageLoadingGenerator(object):
             self.labels = self.orig_labels
             self.label_shape = [1]
 
-        assert generator_type in self.GENERATOR_TYPE
-        self.generator_type = generator_type
-
         self.current_index = 0
 
     def as_categorical(self, cat_thresholds):
@@ -272,9 +268,7 @@ class InfiniteImageLoadingGenerator(object):
             pctl_sampling=self.pctl_sampling,
             pctl_thresholds=self.pctl_thresholds,
             timesteps=self.timesteps,
-            timestep_noise=self.timestep_noise,
-            timestep_dropout=self.timestep_dropout,
-            transform_model=self.transform_model)
+            precomputed=self.precomputed)
 
     def with_percentile_sampling(self,
                                  pctl_sampling='uniform',
@@ -298,23 +292,14 @@ class InfiniteImageLoadingGenerator(object):
             pctl_sampling=pctl_sampling,
             pctl_thresholds=pctl_thresholds,
             timesteps=self.timesteps,
-            timestep_noise=self.timestep_noise,
-            timestep_dropout=self.timestep_dropout,
-            transform_model=self.transform_model)
+            precomputed=self.precomputed)
 
-    def with_transform(self,
-                       transform_model,
-                       timesteps=0,
-                       timestep_noise=0,
-                       timestep_dropout=0):
+    def with_timesteps(self, timesteps=None):
         """
-        Add a model transform and optionally label timesteps.
+        Add previous input timesteps.
 
-        @param transform_model - tensorflow model to transform images
         @param timesteps - number of previous labels to append to samples
-        @param timestep_noise - random noise factor to apply to prev labels
-        @param timestep_dropout - percent chance prev label gets set to 0
-        @return - image-loading iterator with transform/stepsize
+        @return - image-loading iterator with prev image timesteps
         """
         return InfiniteImageLoadingGenerator(
             batch_size=self.batch_size,
@@ -327,58 +312,71 @@ class InfiniteImageLoadingGenerator(object):
             pctl_sampling=self.pctl_sampling,
             pctl_thresholds=self.pctl_thresholds,
             timesteps=timesteps,
-            timestep_noise=timestep_noise,
-            timestep_dropout=timestep_dropout,
-            transform_model=transform_model)
-
-    def with_timesteps(self,
- 		       generator_type,
-                       timesteps=0,
-                       timestep_noise=0,
-                       timestep_dropout=0):
-        """
-        Add a model transform and optionally label/image timesteps.
-
-        @param timesteps - number of previous labels to append to samples
-        @param timestep_noise - random noise factor to apply to prev labels
-        @param timestep_dropout - percent chance prev label gets set to 0
-        @param generator_type - one of GENERATOR_TYPES
-        @return - image-loading iterator with transform/stepsize
-        """
-        return InfiniteImageLoadingGenerator(
-            batch_size=self.batch_size,
-            indexes=self.indexes,
-            labels=self.orig_labels,
-            images_base_path=self.images_base_path,
-            image_file_fmt=self.image_file_fmt,
-            shuffle_on_exhaust=self.shuffle_on_exhaust,
-            cat_thresholds=self.cat_thresholds,
-            pctl_sampling=self.pctl_sampling,
-            pctl_thresholds=self.pctl_thresholds,
-            timesteps=timesteps,
-            timestep_noise=timestep_noise,
-            timestep_dropout=timestep_dropout,
-            generator_type=generator_type)
+            precomputed=self.precomputed)
 
     def precompute_transform(self, transform_model):
+        """
+        Precompute an encoder transform on the whole dataset and load
+        it into memory.
+
+        @param transform_model- model supporting predict_on_batch
+        @return - imag-loading iterator with precomputed transformed input
+        """
+        encoder = transform_model.as_encoder()
         batch_size = self.batch_size
-        output_dim = transform_model.output_dim()
-        n_samples = len(self.indexes)
+        output_dim = get_output_dim(encoder)
+        indexes = np.arange(1, len(self.labels) + 1)
+        n_samples = len(indexes)
         n_batches = n_samples / batch_size
         n_batches += 1 if (n_batches * batch_size) != n_samples else 0
-        transformed = np.empty((n_samples, output_dim))
+        progress_bar = IncrementalBar(
+            'Precomputing',
+            max=n_batches,
+            suffix='%(percent).1f%% - %(eta)ds')
+        precomputed = {}
 
         for batch_no in xrange(n_batches):
             start = batch_no * batch_size
-            end = max((batch_no + 1) * batch_size, n_samples - 1)
+            end = min((batch_no + 1) * batch_size, n_samples)
+            batch_indexes = indexes[start:end]
             size = end - start
+
             batch = np.empty([size] + self.image_shape)
+            for i, img_index in enumerate(batch_indexes):
+                batch[i] = self.load_image(img_index)
+            transformed = encoder.predict_on_batch(batch)
 
-            for i in xrange(size):
-                batch[i] = self.load_image(self.indexes[start + i])
+            for i, img_index in enumerate(batch_indexes):
+                precomputed[img_index] = transformed[i]
 
-            transformed[start:end] = transform_model.predict_on_batch(batch)
+            progress_bar.next()
 
+        return InfiniteImageLoadingGenerator(
+            batch_size=self.batch_size,
+            indexes=self.indexes,
+            labels=self.orig_labels,
+            images_base_path=self.images_base_path,
+            image_file_fmt=self.image_file_fmt,
+            shuffle_on_exhaust=self.shuffle_on_exhaust,
+            cat_thresholds=self.cat_thresholds,
+            pctl_sampling=self.pctl_sampling,
+            pctl_thresholds=self.pctl_thresholds,
+            timesteps=self.timesteps,
+            precomputed=precomputed)
+
+    def with_precomputed(self, precomputed):
+        return InfiniteImageLoadingGenerator(
+            batch_size=self.batch_size,
+            indexes=self.indexes,
+            labels=self.orig_labels,
+            images_base_path=self.images_base_path,
+            image_file_fmt=self.image_file_fmt,
+            shuffle_on_exhaust=self.shuffle_on_exhaust,
+            cat_thresholds=self.cat_thresholds,
+            pctl_sampling=self.pctl_sampling,
+            pctl_thresholds=self.pctl_thresholds,
+            timesteps=self.timesteps,
+            precomputed=precomputed)
 
     def __iter__(self):
         return self
@@ -388,10 +386,13 @@ class InfiniteImageLoadingGenerator(object):
         Load image at index.
 
         @param index - index of image
-        @return - 3d image numpy array
+        @return - image data
         """
-        return load_image(
-            index, self.images_base_path, self.image_file_fmt)
+        if self.precomputed is not None:
+            return self.precomputed[index]
+        else:
+            return load_image(
+                index, self.images_base_path, self.image_file_fmt)
 
     def skip(self, n):
         """
@@ -417,13 +418,13 @@ class InfiniteImageLoadingGenerator(object):
         return self.current_index
 
     def next(self):
-        default_prev = 0
-        samples = np.empty([self.batch_size] + self.image_shape)
         labels = np.empty([self.batch_size] + self.label_shape)
-        if self.generator_type == 'timestepped_labels':
-            steps = np.empty((self.batch_size, self.timesteps))
-        elif self.generator_type == 'timestepped_images':
-            steps = np.empty([self.batch_size] + [self.timesteps] + self.image_shape)
+        if self.timesteps is not None:
+            timesteps_shape = (
+                [self.batch_size, self.timesteps] + self.image_shape)
+            samples = np.empty(timesteps_shape)
+        else:
+            samples = np.empty([self.batch_size] + self.image_shape)
 
         if self.pctl_sampling == 'none':
             next_indexes = [
@@ -447,42 +448,17 @@ class InfiniteImageLoadingGenerator(object):
             raise NotImplementedError
 
         for i, next_image_index in enumerate(next_indexes):
-            if next_image_index == 0:
-                next_image_index = 1
-
-            image = self.load_image(next_image_index)
-
             # image indexes are 1-indexed
             next_label_index = next_image_index - 1
-
-            samples[i] = image
             labels[i] = self.labels[next_label_index]
 
-            if self.generator_type == 'timestepped_labels':
+            if self.timesteps is None:
+                samples[i] = self.load_image(next_image_index)
+            else:
                 for step in xrange(self.timesteps):
-                    step_index = next_label_index - step - 1
-                    prev = (self.labels[step_index]
-                        if 0 <= step_index <= next_label_index
-                        else default_prev)
-                    steps[i, step] = prev
-            elif self.generator_type == 'timestepped_images':
-                for step in xrange(self.timesteps):
-                    step_index = next_image_index - step
-                    if 1 <= step_index <= next_image_index:
-                         steps[i, self.timesteps - step - 1, :, :, :] = self.load_image(step_index)
-
-        if self.transform_model is not None:
-            samples = self.transform_model.predict_on_batch(samples)
-
-        if self.timesteps > 0:
-            if self.generator_type == 'timestepped_labels':
-                steps += np.random.randn(*steps.shape) * self.timestep_noise
-                steps *= (
-                    1 - (np.random.rand(*steps.shape) < self.timestep_dropout)
-                ).astype(int)
-                samples = np.concatenate((samples, steps), axis=1)
-            elif self.generator_type == 'timestepped_images':
-                samples = steps
+                    step_index = max(1, next_image_index - step)
+                    img = self.load_image(step_index)
+                    samples[i, self.timesteps - step - 1] = img
 
         return (samples, labels)
 
@@ -532,7 +508,7 @@ def load_dataset(s3_uri, cache_dir='/tmp'):
         download_dir(s3_uri, dataset_path)
 
     # Load the dataset from the local directory
-    labels = np.load(os.path.join(dataset_path, 'labels.npy'))
+    labels = np.load(os.path.join(dataset_path, 'labels.npy')) * 16.
 
     training_indexes = (np
         .load(os.path.join(dataset_path, 'training_indexes.npy'))
