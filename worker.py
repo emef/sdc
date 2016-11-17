@@ -2,9 +2,15 @@
 This is the worker process which reads from the task queue, trains the
 model, validates it, and writes the results to the db.
 """
-import logging, time
+import cProfile
+import logging
+import signal
+import StringIO
+import pstats
+import time
 
 from keras.backend import binary_crossentropy
+from keras.callbacks import TensorBoard
 import numpy as np
 import tensorflow as tf
 
@@ -16,6 +22,25 @@ from models import (
 from datasets import load_dataset
 
 logger = logging.getLogger(__name__)
+
+PROFILING = False
+
+
+def profiling_sigint_handler(signal, frame):
+    pr.disable()
+    s = StringIO.StringIO()
+    ps = pstats.Stats(pr, stream=s).sort_stats('cumulative')
+    ps.print_stats(.2)
+    print s.getvalue()
+
+    print '------------------------'
+    if raw_input('continue? (y/n) ') != 'y':
+        exit(0)
+
+if PROFILING:
+    pr = cProfile.Profile()
+    pr.enable()
+    signal.signal(signal.SIGINT, profiling_sigint_handler)
 
 
 def handle_task(task, datasets_dir):
@@ -32,9 +57,17 @@ def handle_task(task, datasets_dir):
         task['task_id'],
         task.get('score_metric', 'mean_squared_error'))
 
+    tensorboard = TensorBoard(
+        log_dir='/opt/tensorboard',
+        histogram_freq=1,
+        write_graph=True,
+        write_images=True)
+
+    callbacks = [snapshot, tensorboard]
+
     logger.info('Baseline mse = %.4f  rmse = %.4f' % (
         baseline_mse, np.sqrt(baseline_mse)))
-    model.fit(dataset, task['training_args'], callbacks=[snapshot])
+    model.fit(dataset, task['training_args'], callbacks=callbacks)
     output_config = model.save(task['task_id'])
 
     # assume evaluation is mse
@@ -87,7 +120,7 @@ if __name__ == '__main__':
                 input_shape=(120, 320, 3)),
             'training_args': {
                 'batch_size': 32,
-                'epochs': 20,
+                'epochs': 40,
             },
         }
 

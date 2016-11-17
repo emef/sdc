@@ -916,8 +916,27 @@ class TransferLstmModel(BaseModel):
         return std_evaluate(self, testing_generator)
 
     def predict_on_batch(self, batch):
-        transformed = self.transform_model.predict_on_batch(batch)
-        return self.model.predict_on_batch(transformed) / self.scale
+        return self.model.predict_on_batch(batch) / self.scale
+
+    def make_stateful_predictor(self):
+        stateful_input = deque()
+
+        def predict_fn(x):
+            if x.shape[0] != 1:
+                x = x.reshape([1] + list(x.shape))
+
+            transformed = self.transform_model.predict_on_batch(x)[0]
+
+            if stateful_input is None:
+                stateful_input = deque(
+                    [transformed for _ in xrange(self.timesteps)])
+            else:
+                stateful_input.popleft()
+                stateful_input.append(transformed)
+
+            return self.model.predict_on_batch([stateful_input])[0]
+
+        return predict_fn
 
     def save(self, task_id):
         output_uri = 's3://sdc-matt/transfer-lstm/%s/model.h5' % task_id
