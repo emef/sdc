@@ -63,7 +63,7 @@ def handle_task(task,
     snapshot = SnapshotCallback(
         model,
         snapshot_dir=snapshot_dir,
-        score_metric=task.get('score_metric', 'mean_squared_error'))
+        score_metric=task.get('score_metric', 'val_rmse'))
 
     tensorboard = TensorBoard(
         log_dir='/opt/tensorboard',
@@ -80,10 +80,14 @@ def handle_task(task,
     output_model_path = os.path.join(
         models_path, 'output', '%s.h5' % task['task_id'])
     output_config = model.save(output_model_path)
-    logger.info('Best snapshot had score %s=%.6f, saved to %s',
+    logger.info('Maximum snapshot had score %s=%.6f, saved to %s',
                 snapshot.score_metric,
-                snapshot.best,
-                snapshot.best_path)
+                snapshot.max_score,
+                snapshot.max_path)
+    logger.info('Minimum snapshot had score %s=%.6f, saved to %s',
+                snapshot.score_metric,
+                snapshot.min_score,
+                snapshot.min_path)
     logger.info('Wrote final model to %s', output_model_path)
 
     # assume evaluation is mse

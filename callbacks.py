@@ -12,32 +12,29 @@ class SnapshotCallback(Callback):
     def __init__(self,
                  model_to_save,
                  snapshot_dir,
-                 only_keep_best=True,
-                 score_metric='val_categorical_accuracy'):
+                 score_metric='val_rmse'):
         self.model_to_save = model_to_save
         self.snapshot_dir = snapshot_dir
-        self.only_keep_best = only_keep_best
         self.score_metric = score_metric
-        self.best = None
-        self.best_path = None
+        self.min_score = None
+        self.min_path = None
+        self.max_score = None
+        self.max_path = None
         self.nb = 0
 
         logger.info('Saving snapshots to %s', snapshot_dir)
 
     def on_epoch_end(self, epoch, logs):
-        if self.only_keep_best:
-            score = logs.get(self.score_metric)
-            if self.best is None or score > self.best:
-                self.best = score
-            else:
-                logger.info(
-                    'Not snapshotting: %.2f less than previous %.2f',
-                    score, self.best)
-                return
-
         model_path = os.path.join(self.snapshot_dir, '%d.h5' % self.nb)
+        score = logs.get(self.score_metric)
+        if self.min_score is None or score < self.min_score:
+            self.min_score = score
+            self.min_path = model_path
 
-        self.best_path = model_path
+        if self.max_score is None or score > self.max_score:
+            self.max_score = score
+            self.max_path = model_path
+
         self.model_to_save.save(model_path)
         self.nb += 1
 
