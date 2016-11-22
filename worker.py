@@ -17,7 +17,7 @@ import tensorflow as tf
 
 from callbacks import SnapshotCallback
 from models import (
-    load_from_config, upload_model,
+    load_from_config,
     CategoricalModel, EnsembleModel, LstmModel, RegressionModel,
     TransferLstmModel)
 from datasets import load_dataset
@@ -44,20 +44,26 @@ if PROFILING:
     signal.signal(signal.SIGINT, profiling_sigint_handler)
 
 
-def handle_task(task, datasets_dir):
+def handle_task(task,
+                datasets_dir='/datasets',
+                models_path='/models'):
     """
     Runs a tensorflow task.
     """
+    model_config = task['model_config']
+    model_type = model_config['type']
     logger.info('loading model with config %s', task['model_config'])
     model = load_from_config(task['model_config'])
     dataset_path = os.path.join(datasets_dir, task['dataset_path'])
     dataset = load_dataset(dataset_path)
     baseline_mse = dataset.get_baseline_mse()
 
+    snapshot_dir = os.path.join(
+        models_path, 'snapshots', model_type, task['task_id'])
     snapshot = SnapshotCallback(
         model,
-        task['task_id'],
-        task.get('score_metric', 'mean_squared_error'))
+        snapshot_dir=snapshot_dir,
+        score_metric=task.get('score_metric', 'mean_squared_error'))
 
     tensorboard = TensorBoard(
         log_dir='/opt/tensorboard',
@@ -70,7 +76,15 @@ def handle_task(task, datasets_dir):
     logger.info('Baseline mse = %.4f  rmse = %.4f' % (
         baseline_mse, np.sqrt(baseline_mse)))
     model.fit(dataset, task['training_args'], callbacks=callbacks)
-    output_config = model.save(task['task_id'])
+
+    output_model_path = os.path.join(
+        models_path, 'output', '%s.h5' % task['task_id'])
+    output_config = model.save(output_model_path)
+    logger.info('Best snapshot had score %s=%.6f, saved to %s',
+                snapshot.score_metric,
+                snapshot.best,
+                snapshot.best_path)
+    logger.info('Wrote final model to %s', output_model_path)
 
     # assume evaluation is mse
     evaluation = model.evaluate(dataset)
@@ -102,16 +116,15 @@ def handle_task(task, datasets_dir):
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
     task_id = str(int(time.time()))
-    datasets_dir = "/datasets"
+    tmp_model_path = os.path.join('/tmp/', '%s.h5' % task_id)
 
     if False:
         task = {
             'task_id': task_id,
             'score_metric': 'val_rmse',
             'dataset_path': 'finale_full',
-            'output_uri': 's3://',
             'model_config': TransferLstmModel.create(
-                's3://sdc-matt/tmp/' + task_id,
+                tmp_model_path,
                 transform_model_config={
                     'model_uri': 's3://sdc-matt/regression/1478919380/model.h5',
                     'scale': 16,
@@ -132,15 +145,14 @@ if __name__ == '__main__':
             'task_id': task_id,
             'score_metric': 'val_rmse',
             'dataset_path': 'showdown_full',
-            'output_uri': 's3://',
             'model_config': RegressionModel.create(
-                's3://sdc-matt/tmp/' + task_id,
+                tmp_model_path,
                 use_adadelta=True,
                 learning_rate=0.001,
                 input_shape=(120, 320, 3)),
             'training_args': {
                 'batch_size': 32,
-                'epochs': 20,
+                'epochs': 40,
             },
         }
 
@@ -149,10 +161,9 @@ if __name__ == '__main__':
         task = {
             'task_id': task_id,
             'dataset_path': 'finale_full',
-            'output_uri': 's3://',
             'score_metric': 'val_categorical_accuracy',
             'model_config': CategoricalModel.create(
-                's3://sdc-matt/tmp/' + task_id,
+                tmp_model_path,
                 use_adadelta=True,
                 W_l2=0.001,
                 thresholds=[-0.061, 0.061]
@@ -166,29 +177,12 @@ if __name__ == '__main__':
 
 
     if False:
-        task = {
-            'task_id': task_id,
-            'dataset_path': 'finale_nonnegative',
-            'output_uri': 's3://',
-            'model_config': {
-                'type': 'regression',
-                'model_uri': 's3://sdc-matt/regression/from_cat_3/2/model.h5',
-            },
-            'training_args': {
-                'pctl_sampling': 'uniform',
-                'batch_size': 32,
-                'epochs': 5,
-            },
-        }
-
-    if False:
         # half degree model
         task = {
             'task_id': task_id,
             'dataset_path': 'finale_center',
-            'output_uri': 's3://',
             'model_config': CategoricalModel.create(
-                's3://sdc-matt/tmp/' + task_id,
+                tmp_model_path,
                 use_adadelta=True,
                 learning_rate=0.001,
                 thresholds=np.linspace(-0.061, 0.061, 14)[1:-1],
@@ -208,7 +202,7 @@ if __name__ == '__main__':
         }
 
         ensemble_model_config = EnsembleModel.create(
-            's3://sdc-matt/tmp/' + task_id,
+            tmp_model_path,
             input_model_config,
             timesteps=3,
             timestep_noise=0.1,
@@ -226,7 +220,7 @@ if __name__ == '__main__':
 
     if False:
         lstm_model_config = LstmModel.create(
-            's3://sdc-matt/tmp/' + task_id,
+            tmp_model_path,
             (5, 120, 320, 3),
             timesteps=5,
             W_l2=0.0001)
@@ -242,4 +236,4 @@ if __name__ == '__main__':
             },
         }
 
-    handle_task(task, datasets_dir)
+    handle_task(task)

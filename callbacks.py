@@ -1,4 +1,4 @@
-import logging, time
+import logging, os, time
 
 from keras.callbacks import Callback
 
@@ -11,14 +11,18 @@ class SnapshotCallback(Callback):
     """
     def __init__(self,
                  model_to_save,
-                 task_id,
+                 snapshot_dir,
                  only_keep_best=True,
                  score_metric='val_categorical_accuracy'):
         self.model_to_save = model_to_save
-        self.task_id = task_id
+        self.snapshot_dir = snapshot_dir
         self.only_keep_best = only_keep_best
         self.score_metric = score_metric
         self.best = None
+        self.best_path = None
+        self.nb = 0
+
+        logger.info('Saving snapshots to %s', snapshot_dir)
 
     def on_epoch_end(self, epoch, logs):
         if self.only_keep_best:
@@ -31,7 +35,13 @@ class SnapshotCallback(Callback):
                     score, self.best)
                 return
 
-        self.model_to_save.save(self.task_id)
+        model_path = os.path.join(self.snapshot_dir, '%d.h5' % self.nb)
+
+        self.best_path = model_path
+        self.model_to_save.save(model_path)
+        self.nb += 1
+
+        logger.info('Snapshotted model to %s', model_path)
 
 
 class TimedEarlyStopping(Callback):

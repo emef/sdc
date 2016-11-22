@@ -30,11 +30,11 @@ class BaseModel(object):
     Abstraction over model which allows fit/evaluate/predict
     given input data.
     """
-    def save(self, task_id):
+    def save(self, model_path):
         """
         Save model and return the new model config.
 
-        @param task_id - unique task id
+        @param model_path - path to write model to
         @return - model config
         """
         raise NotImplemented
@@ -184,19 +184,18 @@ class CategoricalModel(BaseModel):
     def output_dim(self):
         return get_output_dim(self.model)
 
-    def save(self, task_id):
-        s3_uri = 's3://sdc-matt/categorical/%s/model.h5' % task_id
-        upload_model(self.model, s3_uri)
+    def save(self, model_path):
+        save_model(self.model, model_path)
 
         return {
             'type': CategoricalModel.TYPE,
-            'model_uri': s3_uri,
+            'model_uri': model_path,
             'thresholds': self.thresholds,
         }
 
     @classmethod
     def create(cls,
-               model_uri,
+               model_path,
                thresholds=[-0.03664, 0.03664],
                input_shape=(120, 320, 3),
                use_adadelta=True,
@@ -261,13 +260,13 @@ class CategoricalModel(BaseModel):
             optimizer=optimizer,
             metrics=metrics)
 
-        # Upload the model to designated path
-        upload_model(model, model_uri)
+        # Write model to designated path
+        model.save(model_path)
 
         # Return model_config params compatible with constructor
         return {
             'type': CategoricalModel.TYPE,
-            'model_uri': model_uri,
+            'model_uri': model_path,
             'thresholds': thresholds,
         }
 
@@ -331,19 +330,18 @@ class RegressionModel(BaseModel):
     def output_dim(self):
         return get_output_dim(self.model)
 
-    def save(self, task_id):
-        s3_uri = 's3://sdc-matt/regression/%s/model.h5' % task_id
-        upload_model(self.model, s3_uri)
+    def save(self, model_path):
+        save_model(self.model, model_path)
 
         return {
             'type': RegressionModel.TYPE,
-            'model_uri': s3_uri,
+            'model_uri': model_path,
             'scale': self.scale,
         }
 
     @classmethod
     def create(cls,
-               model_uri,
+               model_path,
                input_shape=(120, 320, 3),
                use_adadelta=True,
                learning_rate=0.01,
@@ -398,13 +396,13 @@ class RegressionModel(BaseModel):
             optimizer=optimizer,
             metrics=['rmse'])
 
-        # Upload the model to designated path
-        upload_model(model, model_uri)
+        # Write model to designated path
+        model.save(model_path)
 
         # Return model_config params compatible with constructor
         return {
             'type': RegressionModel.TYPE,
-            'model_uri': model_uri,
+            'model_uri': model_path,
             'scale': scale,
         }
 
@@ -516,8 +514,7 @@ class EnsembleModel(BaseModel):
             self.input_model_config
         ).as_encoder()
 
-        self.model = load_model_from_uri(
-            model_config['model_uri'])
+        self.model = load_model_from_uri(model_config['model_uri'])
 
         self.timesteps = model_config['timesteps']
         self.timestep_noise = model_config['timestep_noise']
@@ -634,16 +631,15 @@ class EnsembleModel(BaseModel):
 
         return predict_fn
 
-    def save(self, task_id):
-        ensemble_s3_uri = 's3://sdc-matt/ensemble/%s/ensemble.h5' % task_id
-        upload_model(self.model, ensemble_s3_uri)
+    def save(self, model_path):
+        save_model(self.model, model_path)
 
         return {
             'type': EnsembleModel.TYPE,
             'timesteps': self.timesteps,
             'timestep_noise': self.timestep_noise,
             'timestep_dropout': self.timestep_dropout,
-            'model_uri': ensemble_s3_uri,
+            'model_uri': model_path,
             'input_model_config': self.input_model_config,
         }
 
@@ -652,7 +648,7 @@ class EnsembleModel(BaseModel):
 
     @classmethod
     def create(cls,
-               model_uri,
+               model_path,
                input_model_config,
                timesteps=0,
                timestep_noise=0,
@@ -691,15 +687,15 @@ class EnsembleModel(BaseModel):
 
         model.compile(loss=loss, optimizer=sgd, metrics=metrics)
 
-        # Upload the model to designated path
-        upload_model(model, model_uri)
+        # Write model to designated path
+        model.save(model_path)
 
         return {
             'type': EnsembleModel.TYPE,
             'timesteps': timesteps,
             'timestep_noise': timestep_noise,
             'timestep_dropout': timestep_dropout,
-            'model_uri': model_uri,
+            'model_uri': model_path,
             'input_model_config': input_model_config,
         }
 
@@ -709,9 +705,7 @@ class LstmModel(BaseModel):
     TYPE = 'lstm'
 
     def __init__(self, model_config):
-        self.model = load_model_from_uri(
-            model_config['model_uri'])
-
+        self.model = load_model_from_uri(model_config['model_uri'])
         self.timesteps = model_config['timesteps']
 
     def fit(self, dataset, training_args, callbacks=None):
@@ -767,14 +761,13 @@ class LstmModel(BaseModel):
     def predict_on_batch(self, sequence):
         return self.model.predict_on_batch(sequence)
 
-    def save(self, task_id):
-        ensemble_s3_uri = 's3://sdc-matt/lstm/%s/lstm.h5' % task_id
-        upload_model(self.model, ensemble_s3_uri)
+    def save(self, model_path):
+        save_model(self.model, model_path)
 
         return {
             'type': LstmModel.TYPE,
             'timesteps': self.timesteps,
-            'model_uri': ensemble_s3_uri,
+            'model_uri': model_path,
         }
 
     def output_dim(self):
@@ -782,15 +775,15 @@ class LstmModel(BaseModel):
 
     @classmethod
     def create(cls,
-      model_uri,
-      input_shape,
-      batch_size=64,
-      timesteps=0,
-      loss='mean_squared_error',
-      learning_rate=0.001,
-      momentum=0.9,
-      W_l2=0.001,
-      metrics=None):
+               model_path,
+               input_shape,
+               batch_size=64,
+               timesteps=0,
+               loss='mean_squared_error',
+               learning_rate=0.001,
+               momentum=0.9,
+               W_l2=0.001,
+               metrics=None):
         """
         Creates an LstmModel using a model in the input_model_config
 
@@ -851,13 +844,13 @@ class LstmModel(BaseModel):
 
         model.compile(loss=loss, optimizer='adadelta', metrics=metrics)
 
-        # Upload the model to designated path
-        upload_model(model, model_uri)
+        # Write model to designated path
+        model.save(model_path)
 
         return {
             'type': LstmModel.TYPE,
             'timesteps': timesteps,
-            'model_uri': model_uri,
+            'model_uri': model_path,
         }
 
 
@@ -938,14 +931,13 @@ class TransferLstmModel(BaseModel):
 
         return predict_fn
 
-    def save(self, task_id):
-        output_uri = 's3://sdc-matt/transfer-lstm/%s/model.h5' % task_id
-        upload_model(self.model, output_uri)
+    def save(self, model_path):
+        save_model(self.model, model_path)
 
         return {
             'type': TransferLstmModel.TYPE,
             'timesteps': self.timesteps,
-            'model_uri': output_uri,
+            'model_uri': model_path,
             'transform_model_config': self.transform_model_config,
             'scale': self.scale,
         }
@@ -955,7 +947,7 @@ class TransferLstmModel(BaseModel):
 
     @classmethod
     def create(cls,
-               model_uri,
+               model_path,
                transform_model_config,
                input_shape,
                batch_size=16,
@@ -1013,13 +1005,13 @@ class TransferLstmModel(BaseModel):
             optimizer='adadelta',
             metrics=metrics)
 
-        # Upload the model to designated path
-        upload_model(model, model_uri)
+        # Write model to designated path
+        model.save(model_path)
 
         return {
             'type': TransferLstmModel.TYPE,
             'timesteps': timesteps,
-            'model_uri': model_uri,
+            'model_uri': model_path,
             'transform_model_config': transform_model_config,
             'scale': scale,
         }
@@ -1050,38 +1042,31 @@ def load_from_config(model_config):
     return MODEL_CLASS_BY_TYPE[model_type](model_config)
 
 
-def upload_model(model, s3_uri, cache_dir='/tmp'):
+def save_model(model, model_path):
     """
-    Upload a keras model to s3.
+    Save a keras model to a local path.
 
     @param model - keras model
-    @param s3_uri - formatted s3://bucket/key/path
-    @param cache_dir - where to store cached models
+    @param model_path - local path to write to
     """
-    _, key = parse_s3_uri(s3_uri)
-    model_path = os.path.join(cache_dir, key)
     try: os.makedirs(os.path.dirname(model_path))
     except: pass
-    logger.info("Uploading model to %s", s3_uri)
+
     model.save(model_path)
-    upload_file(model_path, s3_uri)
 
-
-def load_model_from_uri(s3_uri, skip_cache=False, cache_dir='/tmp'):
+def load_model_from_uri(model_path_or_uri, cache_dir='/tmp'):
     """
     Download, deserialize, and load a keras model into memory.
 
-    @param s3_uri - formatted s3://bucket/key/path
-    @param skip_cache - skip local file cache
+    @param model_path_or_uri - absolute path or s3_uri
     @param cache_dir - where to cache model files
     """
-    bucket, key = parse_s3_uri(s3_uri)
-    model_path = os.path.join(cache_dir, key)
-    if not skip_cache and os.path.exists(model_path):
-        logger.info("Using cached model at " + model_path)
-    else:
-        logger.info("Downloading model from " + s3_uri)
+    if model_path_or_uri.startswith('s3'):
+        bucket, key = parse_s3_uri(model_path_or_uri)
+        model_path = os.path.join(cache_dir, key)
         download_file(bucket, key, model_path)
+    else:
+        model_path = model_path_or_uri
 
     return keras_load_model(model_path)
 
