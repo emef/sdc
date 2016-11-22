@@ -4,6 +4,7 @@ model, validates it, and writes the results to the db.
 """
 import cProfile
 import logging
+import os
 import signal
 import StringIO
 import pstats
@@ -49,7 +50,8 @@ def handle_task(task, datasets_dir):
     """
     logger.info('loading model with config %s', task['model_config'])
     model = load_from_config(task['model_config'])
-    dataset = load_dataset(task['dataset_uri'], cache_dir=datasets_dir)
+    dataset_path = os.path.join(datasets_dir, task['dataset_path'])
+    dataset = load_dataset(dataset_path)
     baseline_mse = dataset.get_baseline_mse()
 
     snapshot = SnapshotCallback(
@@ -100,13 +102,13 @@ def handle_task(task, datasets_dir):
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
     task_id = str(int(time.time()))
-    datasets_dir = "/"
+    datasets_dir = "/datasets"
 
     if False:
         task = {
             'task_id': task_id,
             'score_metric': 'val_rmse',
-            'dataset_uri': 's3://sdc-matt/datasets/finale_full',
+            'dataset_path': 'finale_full',
             'output_uri': 's3://',
             'model_config': TransferLstmModel.create(
                 's3://sdc-matt/tmp/' + task_id,
@@ -129,7 +131,7 @@ if __name__ == '__main__':
         task = {
             'task_id': task_id,
             'score_metric': 'val_rmse',
-            'dataset_uri': 's3://sdc-matt/datasets/showdown_full',
+            'dataset_path': 'showdown_full',
             'output_uri': 's3://',
             'model_config': RegressionModel.create(
                 's3://sdc-matt/tmp/' + task_id,
@@ -146,7 +148,7 @@ if __name__ == '__main__':
         # sharp left vs center vs sharp right
         task = {
             'task_id': task_id,
-            'dataset_uri': 's3://sdc-matt/datasets/finale_full',
+            'dataset_path': 'finale_full',
             'output_uri': 's3://',
             'score_metric': 'val_categorical_accuracy',
             'model_config': CategoricalModel.create(
@@ -166,7 +168,7 @@ if __name__ == '__main__':
     if False:
         task = {
             'task_id': task_id,
-            'dataset_uri': 's3://sdc-matt/datasets/finale_nonnegative',
+            'dataset_path': 'finale_nonnegative',
             'output_uri': 's3://',
             'model_config': {
                 'type': 'regression',
@@ -183,7 +185,7 @@ if __name__ == '__main__':
         # half degree model
         task = {
             'task_id': task_id,
-            'dataset_uri': 's3://sdc-matt/datasets/finale_center',
+            'dataset_path': 'finale_center',
             'output_uri': 's3://',
             'model_config': CategoricalModel.create(
                 's3://sdc-matt/tmp/' + task_id,
@@ -214,7 +216,7 @@ if __name__ == '__main__':
 
         task = {
             'task_id': task_id,
-            'dataset_uri': 's3://sdc-matt/datasets/final_training',
+            'dataset_path': 'final_training',
             'model_config': ensemble_model_config,
             'training_args': {
                 'batch_size': 64,
@@ -231,7 +233,7 @@ if __name__ == '__main__':
 
         task = {
             'task_id': task_id,
-            'dataset_uri': 's3://sdc-matt/datasets/finale_center',
+            'dataset_path': 'finale_center',
             'model_config': lstm_model_config,
             'training_args': {
                 'pctl_sampling': 'uniform',

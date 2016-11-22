@@ -518,7 +518,7 @@ def load_image(index, images_base_path, image_file_fmt):
     return ((image-(255.0/2))/255.0)
 
 
-def load_dataset(s3_uri, cache_dir='/tmp'):
+def load_dataset(dataset_path):
     """
     Downloads and loads an image dataset.
 
@@ -534,18 +534,10 @@ def load_dataset(s3_uri, cache_dir='/tmp'):
               ...
               N.png.npy
 
-    @param s3_uri - formatted as s3://bucket/key/path.tar.gz
-    @param cache_dir - local dir to cache datasets
+    @param dataset_path - path to dataset directory
     """
-    _, s3_dir = parse_s3_uri(s3_uri)
-    dataset_path = os.path.join(cache_dir, s3_dir)
-
-    # Ensure we have the dataset downloaded locally
-    if os.path.exists(dataset_path):
-        logger.info('Dataset %s exists, using cache' % s3_dir)
-    else:
-        logger.info('Downloading dataset %s' % s3_dir)
-        download_dir(s3_uri, dataset_path)
+    assert(os.path.exists(dataset_path),
+           "dataset doesn't exist: " + dataset_path)
 
     # Load the dataset from the local directory
     labels = np.load(os.path.join(dataset_path, 'labels.npy'))

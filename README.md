@@ -1,8 +1,7 @@
 ### task config
 ```python
 {
-  'dataset_uri': 's3://sdc-matt/datasets/sdc_processed_1',
-  'output_uri': 's3://',
+  'dataset_path': 'sdc_processed_1',
   'model_config': {
     'type': 'ensemble',
     'timesteps': 3,
