@@ -102,19 +102,20 @@ if __name__ == '__main__':
     task_id = str(int(time.time()))
     datasets_dir = "/"
 
-    if True:
+    if False:
         task = {
             'task_id': task_id,
             'score_metric': 'val_rmse',
-            'dataset_uri': 's3://sdc-matt/datasets/finale_center',
+            'dataset_uri': 's3://sdc-matt/datasets/finale_full',
             'output_uri': 's3://',
             'model_config': TransferLstmModel.create(
                 's3://sdc-matt/tmp/' + task_id,
                 transform_model_config={
                     'model_uri': 's3://sdc-matt/regression/1478919380/model.h5',
+                    'scale': 16,
                     'type': 'regression'
                 },
-                timesteps=10,
+                timesteps=20,
                 W_l2=0.001,
                 scale=16.,
                 input_shape=(120, 320, 3)),
@@ -124,11 +125,11 @@ if __name__ == '__main__':
             },
         }
 
-    if False:
+    if True:
         task = {
             'task_id': task_id,
             'score_metric': 'val_rmse',
-            'dataset_uri': 's3://sdc-matt/datasets/finale_full',
+            'dataset_uri': 's3://sdc-matt/datasets/showdown_full',
             'output_uri': 's3://',
             'model_config': RegressionModel.create(
                 's3://sdc-matt/tmp/' + task_id,

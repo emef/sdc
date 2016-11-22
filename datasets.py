@@ -195,6 +195,7 @@ class InfiniteImageLoadingGenerator(object):
                  pctl_sampling='none',
                  pctl_thresholds=None,
                  timesteps=None,
+                 timestep_delta=1,
                  precomputed=None,
                  scale=1.0):
         """
@@ -208,6 +209,7 @@ class InfiniteImageLoadingGenerator(object):
         @param pctl_sampling - type of percentile sampling.
         @param pctl_thresholds - override percentile thresholds.
         @param timesteps - appends this many previous labels to end of samples
+        @param timestep_delta - number of frames to skip in each timestep
         @param precomputed - precomputed input data {index: data}
         @param scale - scaling factor to apply to labels
         """
@@ -221,6 +223,7 @@ class InfiniteImageLoadingGenerator(object):
         self.pctl_sampling = pctl_sampling
         self.pctl_thresholds = pctl_thresholds
         self.timesteps = timesteps
+        self.timestep_delta = timestep_delta
         self.precomputed = precomputed
         self.scale = scale
 
@@ -278,6 +281,7 @@ class InfiniteImageLoadingGenerator(object):
             pctl_sampling=self.pctl_sampling,
             pctl_thresholds=self.pctl_thresholds,
             timesteps=self.timesteps,
+            timestep_delta=self.timestep_delta,
             precomputed=self.precomputed,
             scale=scale)
 
@@ -293,6 +297,7 @@ class InfiniteImageLoadingGenerator(object):
             pctl_sampling=self.pctl_sampling,
             pctl_thresholds=self.pctl_thresholds,
             timesteps=self.timesteps,
+            timestep_delta=self.timestep_delta,
             precomputed=self.precomputed,
             scale=self.scale)
 
@@ -318,10 +323,11 @@ class InfiniteImageLoadingGenerator(object):
             pctl_sampling=pctl_sampling,
             pctl_thresholds=pctl_thresholds,
             timesteps=self.timesteps,
+            timestep_delta=self.timestep_delta,
             precomputed=self.precomputed,
             scale=self.scale)
 
-    def with_timesteps(self, timesteps=None):
+    def with_timesteps(self, timesteps=None, timestep_delta=1):
         """
         Add previous input timesteps.
 
@@ -339,6 +345,7 @@ class InfiniteImageLoadingGenerator(object):
             pctl_sampling=self.pctl_sampling,
             pctl_thresholds=self.pctl_thresholds,
             timesteps=timesteps,
+            timestep_delta=timestep_delta,
             precomputed=self.precomputed,
             scale=self.scale)
 
@@ -390,6 +397,7 @@ class InfiniteImageLoadingGenerator(object):
             pctl_sampling=self.pctl_sampling,
             pctl_thresholds=self.pctl_thresholds,
             timesteps=self.timesteps,
+            timestep_delta=self.timestep_delta,
             precomputed=precomputed,
             scale=self.scale)
 
@@ -405,6 +413,7 @@ class InfiniteImageLoadingGenerator(object):
             pctl_sampling=self.pctl_sampling,
             pctl_thresholds=self.pctl_thresholds,
             timesteps=self.timesteps,
+            timestep_delta=self.timestep_delta,
             precomputed=precomputed,
             scale=self.scale)
 
@@ -486,7 +495,8 @@ class InfiniteImageLoadingGenerator(object):
                 samples[i] = self.load_image(next_image_index)
             else:
                 for step in xrange(self.timesteps):
-                    step_index = max(1, next_image_index - step)
+                    delta = step * self.timestep_delta
+                    step_index = max(1, next_image_index - delta)
                     img = self.load_image(step_index)
                     samples[i, self.timesteps - step - 1] = img
 
