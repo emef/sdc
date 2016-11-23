@@ -322,6 +322,9 @@ class RegressionModel(BaseModel):
     def predict_on_batch(self, batch):
         return self.model.predict_on_batch(batch) / self.scale
 
+    def make_stateful_predictor(self):
+        return lambda x: self.predict_on_batch(x)[0, 0]
+
     def as_encoder(self):
         # remove the last output layers to retain the feature maps
         deep_copy = deep_copy_model(self.model)
