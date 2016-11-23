@@ -75,7 +75,11 @@ def handle_task(task,
 
     logger.info('Baseline mse = %.4f  rmse = %.4f' % (
         baseline_mse, np.sqrt(baseline_mse)))
-    model.fit(dataset, task['training_args'], callbacks=callbacks)
+    model.fit(
+        dataset,
+        task['training_args'],
+        final=task.get('final', False),
+        callbacks=callbacks)
 
     output_model_path = os.path.join(
         models_path, 'output', '%s.h5' % task['task_id'])
@@ -122,33 +126,35 @@ if __name__ == '__main__':
     task_id = str(int(time.time()))
     tmp_model_path = os.path.join('/tmp/', '%s.h5' % task_id)
 
-    if False:
-        task = {
-            'task_id': task_id,
-            'score_metric': 'val_rmse',
-            'dataset_path': 'finale_full',
-            'model_config': TransferLstmModel.create(
-                tmp_model_path,
-                transform_model_config={
-                    'model_uri': 's3://sdc-matt/regression/1478919380/model.h5',
-                    'scale': 16,
-                    'type': 'regression'
-                },
-                timesteps=20,
-                W_l2=0.001,
-                scale=16.,
-                input_shape=(120, 320, 3)),
-            'training_args': {
-                'batch_size': 32,
-                'epochs': 40,
-            },
-        }
-
     if True:
         task = {
             'task_id': task_id,
             'score_metric': 'val_rmse',
             'dataset_path': 'showdown_full',
+            'final': True,
+            'model_config': TransferLstmModel.create(
+                tmp_model_path,
+                transform_model_config={
+                    'model_uri': '/models/output/1479836278.h5',
+                    'scale': 16,
+                    'type': 'regression',
+                },
+                timesteps=10,
+                W_l2=0.001,
+                scale=16.,
+                input_shape=(120, 320, 3)),
+            'training_args': {
+                'batch_size': 32,
+                'epochs': 50,
+            },
+        }
+
+    if False:
+        task = {
+            'task_id': task_id,
+            'score_metric': 'val_rmse',
+            'dataset_path': 'showdown_full',
+            'final': True,
             'model_config': RegressionModel.create(
                 tmp_model_path,
                 use_adadelta=True,

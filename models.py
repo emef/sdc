@@ -123,10 +123,6 @@ class CategoricalModel(BaseModel):
 
     def fit(self, dataset, training_args, callbacks=None, final=False):
         batch_size = training_args.get('batch_size', 100)
-        epoch_size = training_args.get(
-            'epoch_size', dataset.get_training_size())
-        validation_size = training_args.get(
-            'validation_size', dataset.get_validation_size())
         epochs = training_args.get('epochs', 5)
 
         self.model.summary()
@@ -152,6 +148,11 @@ class CategoricalModel(BaseModel):
             pctl_thresholds = training_args.get('pctl_thresholds')
             training_generator = (training_generator
                 .with_percentile_sampling(pctl_sampling, pctl_thresholds))
+
+        validation_size = training_args.get(
+            'validation_size', validation_generator.get_size())
+        epoch_size = training_args.get(
+            'epoch_size', training_generator.get_size())
 
         history = self.model.fit_generator(
             training_generator,
@@ -279,10 +280,6 @@ class RegressionModel(BaseModel):
 
     def fit(self, dataset, training_args, callbacks=None, final=False):
         batch_size = training_args.get('batch_size', 100)
-        epoch_size = training_args.get(
-            'epoch_size', dataset.get_training_size())
-        validation_size = training_args.get(
-            'validation_size', dataset.get_validation_size())
         epochs = training_args.get('epochs', 5)
 
         self.model.summary()
@@ -301,6 +298,11 @@ class RegressionModel(BaseModel):
         validation_generator = (dataset
             .validation_generator(batch_size)
             .scale_labels(self.scale))
+
+        validation_size = training_args.get(
+            'validation_size', validation_generator.get_size())
+        epoch_size = training_args.get(
+            'epoch_size', training_generator.get_size())
 
         history = self.model.fit_generator(
             training_generator,
@@ -521,10 +523,6 @@ class EnsembleModel(BaseModel):
         self.timestep_dropout = model_config['timestep_dropout']
 
     def fit(self, dataset, training_args, callbacks=None):
-        validation_size = training_args.get(
-            'validation_size', dataset.get_validation_size())
-        epoch_size = training_args.get(
-            'epoch_size', dataset.get_training_size())
         batch_size = training_args.get('batch_size', 100)
         epochs = training_args.get('epochs', 5)
 
@@ -551,8 +549,11 @@ class EnsembleModel(BaseModel):
             .validation_generator(batch_size)
             .with_transform(input_model, timesteps, noise, dropout))
 
-        # NOTE: can't use fit with parallel loading or it locks up
-        # TODO: why?
+        validation_size = training_args.get(
+            'validation_size', validation_generator.get_size())
+        epoch_size = training_args.get(
+            'epoch_size', training_generator.get_size())
+
         history = self.model.fit_generator(
             training_generator,
             validation_data=validation_generator,
@@ -709,10 +710,6 @@ class LstmModel(BaseModel):
         self.timesteps = model_config['timesteps']
 
     def fit(self, dataset, training_args, callbacks=None):
-        validation_size = training_args.get(
-            'validation_size', dataset.get_validation_size())
-        epoch_size = training_args.get(
-            'epoch_size', dataset.get_training_size())
         batch_size = training_args.get('batch_size', 100)
         epochs = training_args.get('epochs', 5)
 
@@ -729,6 +726,11 @@ class LstmModel(BaseModel):
         validation_generator = (dataset
             .validation_generator(batch_size)
             .with_timesteps(timesteps))
+
+        validation_size = training_args.get(
+            'validation_size', validation_generator.get_size())
+        epoch_size = training_args.get(
+            'epoch_size', training_generator.get_size())
 
         callbacks = (callbacks or [])
         history = self.model.fit_generator(
@@ -866,20 +868,18 @@ class TransferLstmModel(BaseModel):
         self.timesteps = model_config['timesteps']
         self.scale = model_config.get('scale', 1.0)
 
-    def fit(self, dataset, training_args, callbacks=None):
-        validation_size = training_args.get(
-            'validation_size', dataset.get_validation_size())
-        epoch_size = training_args.get(
-            'epoch_size', dataset.get_training_size())
+    def fit(self, dataset, training_args, callbacks=None, final=False):
         batch_size = training_args.get('batch_size', 100)
         epochs = training_args.get('epochs', 5)
-
         timesteps = self.timesteps
 
         self.model.summary()
 
-        training_generator = (dataset
-            .training_generator(batch_size)
+        training_generator = (
+            dataset.final_generator(batch_size) if final
+            else dataset.training_generator(batch_size))
+
+        training_generator = (training_generator
             .scale_labels(self.scale)
             .precompute_transform(self.transform_model)
             .with_timesteps(timesteps=timesteps))
@@ -889,6 +889,11 @@ class TransferLstmModel(BaseModel):
             .scale_labels(self.scale)
             .with_precomputed(training_generator.precomputed)
             .with_timesteps(timesteps=timesteps))
+
+        validation_size = training_args.get(
+            'validation_size', validation_generator.get_size())
+        epoch_size = training_args.get(
+            'epoch_size', training_generator.get_size())
 
         callbacks = (callbacks or [])
         history = self.model.fit_generator(
@@ -912,22 +917,27 @@ class TransferLstmModel(BaseModel):
         return self.model.predict_on_batch(batch) / self.scale
 
     def make_stateful_predictor(self):
-        stateful_input = deque()
+        encoder = self.transform_model.as_encoder()
+        steps = deque()
 
         def predict_fn(x):
-            if x.shape[0] != 1:
-                x = x.reshape([1] + list(x.shape))
+            # apply feature extractor
+            x = encoder.predict_on_batch(x)
 
-            transformed = self.transform_model.predict_on_batch(x)[0]
+            # initial fill of timesteps
+            if not len(steps):
+                for _ in xrange(self.timesteps):
+                    steps.append(x)
 
-            if stateful_input is None:
-                stateful_input = deque(
-                    [transformed for _ in xrange(self.timesteps)])
-            else:
-                stateful_input.popleft()
-                stateful_input.append(transformed)
+            # put most recent features at end
+            steps.popleft()
+            steps.append(x)
 
-            return self.model.predict_on_batch([stateful_input])[0]
+            timestepped_x = np.empty((1, self.timesteps) + x.shape[1:])
+            for i, img in enumerate(steps):
+                timestepped_x[0, i] = img
+
+            return self.model.predict_on_batch(timestepped_x)[0, 0] / self.scale
 
         return predict_fn
 
