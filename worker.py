@@ -124,9 +124,9 @@ def handle_task(task,
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
     task_id = str(int(time.time()))
-    tmp_model_path = os.path.join('/tmp/', '%s.h5' % task_id)
+    tmp_model_path = os.path.join('/tmp', '%s.h5' % task_id)
 
-    if True:
+    if False:
         task = {
             'task_id': task_id,
             'score_metric': 'val_rmse',
@@ -228,21 +228,23 @@ if __name__ == '__main__':
             },
         }
 
-    if False:
+    if True:
         lstm_model_config = LstmModel.create(
             tmp_model_path,
-            (5, 120, 320, 3),
-            timesteps=5,
-            W_l2=0.0001)
+            (10, 120, 320, 3),
+            timesteps=10,
+            W_l2=0.0001,
+            scale=60.0)
 
         task = {
             'task_id': task_id,
-            'dataset_path': 'finale_center',
+            'dataset_path': 'showdown_full',
+            'final': True,
             'model_config': lstm_model_config,
             'training_args': {
                 'pctl_sampling': 'uniform',
                 'batch_size': 32,
-                'epochs': 15,
+                'epochs': 10,
             },
         }
 

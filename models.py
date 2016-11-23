@@ -711,8 +711,9 @@ class LstmModel(BaseModel):
     def __init__(self, model_config):
         self.model = load_model_from_uri(model_config['model_uri'])
         self.timesteps = model_config['timesteps']
+        self.scale = model_config.get('scale', 1.0)
 
-    def fit(self, dataset, training_args, callbacks=None):
+    def fit(self, dataset, training_args, callbacks=None, final=False):
         batch_size = training_args.get('batch_size', 100)
         epochs = training_args.get('epochs', 5)
 
@@ -720,14 +721,17 @@ class LstmModel(BaseModel):
 
         self.model.summary()
 
-        batch, _ = (dataset.training_generator(batch_size).next())
+        training_generator = (
+            dataset.final_generator(batch_size) if final
+            else dataset.training_generator(batch_size))
 
-        training_generator = (dataset
-            .training_generator(batch_size)
+        training_generator = (training_generator
+            .scale_labels(self.scale)
             .with_timesteps(timesteps))
 
         validation_generator = (dataset
             .validation_generator(batch_size)
+            .scale_labels(self.scale)
             .with_timesteps(timesteps))
 
         validation_size = training_args.get(
@@ -757,14 +761,14 @@ class LstmModel(BaseModel):
         err_count = 0.
         for _ in xrange(n_batches):
             X_batch, y_batch = testing_generator.next()
-            y_pred = self.model.predict_on_batch(X_batch)
+            y_pred = self.predict_on_batch(X_batch)
             err_sum += np.sum((y_batch - y_pred) ** 2)
             err_count += len(y_pred)
         mse = err_sum / err_count
         return [mse]
 
     def predict_on_batch(self, sequence):
-        return self.model.predict_on_batch(sequence)
+        return self.model.predict_on_batch(sequence) / self.scale
 
     def save(self, model_path):
         save_model(self.model, model_path)
@@ -773,6 +777,7 @@ class LstmModel(BaseModel):
             'type': LstmModel.TYPE,
             'timesteps': self.timesteps,
             'model_uri': model_path,
+            'scale': self.scale
         }
 
     def output_dim(self):
@@ -785,23 +790,21 @@ class LstmModel(BaseModel):
                batch_size=64,
                timesteps=0,
                loss='mean_squared_error',
-               learning_rate=0.001,
-               momentum=0.9,
                W_l2=0.001,
-               metrics=None):
+               metrics=None,
+               scale=1.0):
         """
         Creates an LstmModel using a model in the input_model_config
 
-        @param model_uri - s3 uri to save the model
+        @param model_path - s3 uri to save the model
         @param input_shape - timestepped shape (timesteps, feature dims)
         @param batch_input_shape - (batch_size, feature dims)
         @param timesteps - timesteps inclusive of the current frame
                          (10 - current frame + 9 previous frames)
         @param loss - loss function on the model
-        @param learning - learning rate parameter on the model
-        @param momentum - learning momentum
         @param W_l2 - W_l2 regularization param
         @param metrics - metrics to track - (rmse, mse...)
+        @param scale - factor by which to scale the labels
         """
 
         metrics = metrics or ['rmse']
@@ -837,7 +840,7 @@ class LstmModel(BaseModel):
         model.add(LSTM(64, dropout_W=0.2, dropout_U=0.2))
         model.add(Dropout(0.2))
         model.add(Dense(
-            output_dim=32,
+            output_dim=256,
             init='he_normal',
             activation='relu',
             W_regularizer=l2(W_l2)))
@@ -856,6 +859,7 @@ class LstmModel(BaseModel):
             'type': LstmModel.TYPE,
             'timesteps': timesteps,
             'model_uri': model_path,
+            'scale': scale
         }
 
 
