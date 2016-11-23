@@ -48,9 +48,6 @@ def main():
     parser.add_argument('--test_dir', type=str,
                         default='/datasets/showdown_raw/test/center/',
                         help='Directory containing test images')
-    parser.add_argument('--html_dir', type=str,
-                        default='/submissions/html/',
-                        help='Directory to write html videos')
     parser.add_argument('--model_config', type=str,
                         default=json.dumps(default_model_config),
                         help='Model config JSON to use')
@@ -64,14 +61,12 @@ def main():
         args.test_dir,
         args.submission_path,
         args.video_path,
-        html_dir=args.html_dir,
         regenerate=args.regenerate)
 
 def generate_submission(model_config,
                         images_path,
                         submission_path,
                         video_path,
-                        html_dir=None,
                         regenerate=True):
 
     if regenerate or not os.path.exists(submission_path):
@@ -106,9 +101,6 @@ def generate_submission(model_config,
             temp_dir)
     finally:
         shutil.rmtree(temp_dir)
-
-    if html_dir is not None:
-        generate_html(video_path, html_dir)
 
 
 def generate_submission_csv(predictor, images_path, output_path):
@@ -203,33 +195,12 @@ def generate_video(submission_path,
     print 'Wrote final overlay video to', video_path
 
 
-def generate_html(video_path, html_dir):
-    video_name = video_path.split('/')[-1]
-    video_prefix = video_name.rsplit('.', 1)[0]
-    html_path = os.path.join(html_dir, video_prefix + '.html')
-    html_videos_dir = os.path.join(html_dir, 'videos')
-
-    safe_makedirs(html_videos_dir)
-    try:
-        subprocess.check_call(
-            ['ln', '-s', video_path, html_videos_dir],
-            stdout=FNULL, stderr=subprocess.STDOUT)
-    except: pass
-
-    html = '''
-    <video controls>
-      <source src="videos/%s">
-    </video>''' % video_name
-    with open(html_path, 'w') as html_f:
-        html_f.write(html)
-
-
 def overlay_angle(img_path, angle):
     center=(320, 400)
     radius=50
     cv_image = cv2.imread(img_path)
     cv2.circle(cv_image, center, radius, (255, 255, 255), thickness=4, lineType=8)
-    x, y = point_on_circle(center, radius, angle)
+    x, y = point_on_circle(center, radius, -angle)
     cv2.circle(cv_image, (x,y), 6, (255, 0, 0), thickness=6, lineType=8)
     cv2.putText(
         cv_image,
@@ -243,7 +214,7 @@ def overlay_angle(img_path, angle):
 
 
 def get_degrees(radians):
-    return -(radians * 180.0) / 3.14
+    return (radians * 180.0) / 3.14
 
 
 def point_on_circle(center, radius, angle):
