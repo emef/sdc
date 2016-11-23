@@ -1,17 +1,3 @@
-"""
-Run a gridsearch on some model config.
-
-* convolution layer parameters
-  - nb filters
-  - filter size
-  - pooling
-  - dropout
-
-* dense layer parameters
-  - neurons
-  - dropout
-  - regularization
-"""
 import argparse
 import json
 import numpy as np
@@ -118,6 +104,7 @@ class ParameterSpace(object):
             params.append(expanded_value)
 
         return params
+
 
 class Layer(object):
     def get_parameter_space(self):
@@ -231,6 +218,11 @@ class FlattenLayer(Layer):
 
 
 class Topology(object):
+    def random_model(self):
+        pass
+
+
+class ExampleTopology(Topology):
     def __init__(self, name, layers, input_shape, output_dim):
         self.name = name
         self.input_shape = input_shape
@@ -252,106 +244,3 @@ class Topology(object):
             layer_params[layer_name] = dict(zip(space.names, params))
 
         return model, layer_params
-
-
-topologies = {
-    '2conv-1dense': Topology(
-        name='2conv-1dense',
-        layers=[
-            ConvLayer(min_nb_filters=5,
-                      max_nb_filters=35,
-                      delta_nb_filters=5,
-                      min_filter_dim=2,
-                      max_filter_dim=10,
-                      delta_filter_dim=2,
-                      min_pool_dim=2,
-                      max_pool_dim=6,
-                      delta_pool_dim=2),
-
-        ConvLayer(min_nb_filters=10,
-                  max_nb_filters=100,
-                  delta_nb_filters=10,
-                  min_filter_dim=2,
-                  max_filter_dim=10,
-                  delta_filter_dim=2,
-                  min_pool_dim=2,
-                  max_pool_dim=6,
-                  delta_pool_dim=2),
-
-        FlattenLayer(),
-
-        DenseLayer(min_output_dim=40,
-                   max_output_dim=400,
-                   delta_output_dim=40)
-        ],
-        input_shape=(120, 320, 3),
-        output_dim=1),
-}
-
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Run grid search')
-    parser.add_argument('filename', type=str, metavar='F',
-                        help='Where to read/write model output to')
-    parser.add_argument('--duration', type=int, default=20,
-                        help='Duration to train before early stopping')
-    parser.add_argument('--max_params', type=int, default=1000000,
-                        help='Max # params to consider training')
-    parser.add_argument('--dataset_uri', type=str,
-                        default='s3://sdc-matt/datasets/final_training',
-                        help='Dataset uri to train on')
-    parser.add_argument('--topology', type=str, default='2conv-1dense',
-                        help='Which topology to search')
-
-    args = parser.parse_args()
-
-    dataset_uri = args.dataset_uri
-    topology = topologies[args.topology]
-
-    while True:
-        try:
-            rnd_model, gridsearch_params = topology.random_model()
-
-            if rnd_model.count_params() > args.max_params:
-                continue
-
-            rnd_model.compile(
-                loss='mean_squared_error',
-                optimizer='adadelta',
-                metrics=['rmse'])
-
-            task_id = 'gridsearch.%d' % int(time.time())
-            model_uri = 's3://sdc-matt/tmp/%s' % task_id
-            upload_model(rnd_model, model_uri)
-
-            model = RegressionModel({'model_uri': model_uri})
-            dataset = load_dataset(dataset_uri)
-
-            # TODO: grid search should be able to vary the training args
-            training_args = {
-                'epochs': 10000,  # let early stop callback end training
-                'batch_size': 100,
-                'percentile_sampling': 'uniform',
-            }
-
-            callbacks = [TimedEarlyStopping(args.duration)]
-            history = model.fit(dataset, training_args, callbacks=callbacks)
-            model_config = model.save(task_id)
-
-            test_loss = model.evaluate(dataset)
-
-            output = {
-                'topology': topology.name,
-                'dataset_uri': dataset_uri,
-                'val_loss': history.history['val_loss'][-1],
-                'test_loss': test_loss,
-                'history': history.history,
-                'model_config': model_config,
-                'gridsearch_params': gridsearch_params,
-                'model_free_parameters': rnd_model.count_params(),
-            }
-
-            with open(args.filename, 'a') as results_f:
-                results_f.write('%s\n' % json.dumps(output))
-
-        except Exception as e:
-            traceback.print_exc()
