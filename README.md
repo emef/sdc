@@ -45,14 +45,16 @@ transfer learning, etc.
 ```python
 from callbacks import SnapshotCallback
 from datasets import load_dataset
-from models import RegressionModel
+from models import load_from_config, RegressionModel
 
 # RegressionModel is a cnn that directly predicts the steering angle
-model = RegressionModel.create(
+init_model_config = RegressionModel.create(
   '/tmp/regression_model.keras',
   use_adadelta=True,
   learning_rate=0.001,
   input_shape=(120, 320, 3))
+  
+model = load_from_config(init_model_config)
 
 # this path contains a dataset in the prescribed format
 dataset = load_dataset('/datasets/showdown_full')
