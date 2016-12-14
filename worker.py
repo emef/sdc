@@ -11,7 +11,7 @@ import pstats
 import time
 
 from keras.backend import binary_crossentropy
-from keras.callbacks import TensorBoard
+from keras.callbacks import EarlyStopping
 import numpy as np
 import tensorflow as tf
 
@@ -65,13 +65,12 @@ def handle_task(task,
         snapshot_dir=snapshot_dir,
         score_metric=task.get('score_metric', 'val_rmse'))
 
-    tensorboard = TensorBoard(
-        log_dir='/opt/tensorboard',
-        histogram_freq=1,
-        write_graph=True,
-        write_images=True)
+    earlystop = EarlyStopping(
+        monitor=task.get('score_metric', 'val_rmse'),
+        patience=12,
+        mode='min')
 
-    callbacks = [snapshot, tensorboard]
+    callbacks = [snapshot, earlystop]
 
     logger.info('Baseline mse = %.4f  rmse = %.4f' % (
         baseline_mse, np.sqrt(baseline_mse)))
@@ -121,50 +120,69 @@ def handle_task(task,
                 logger.info('p=%.5f  l=%.5f', pred, label)
 
 
-if __name__ == '__main__':
+def main():
     logging.basicConfig(level=logging.INFO)
     task_id = str(int(time.time()))
     tmp_model_path = os.path.join('/tmp', '%s.h5' % task_id)
 
-    if False:
+    if True:
         task = {
             'task_id': task_id,
             'score_metric': 'val_rmse',
             'dataset_path': 'showdown_full',
             'final': True,
-            'model_config': TransferLstmModel.create(
+            'model_config': TransferLstmModel.create_cnn(
                 tmp_model_path,
                 transform_model_config={
-                    'model_uri': '/models/output/1479836278.h5',
+                    'model_uri': '/models/snapshots/regression/1480182349/31.h5',
                     'scale': 16,
-                    'type': 'regression',
+                    'type': 'regression'
                 },
-                timesteps=10,
+                timesteps=50,
                 W_l2=0.001,
                 scale=16.,
                 input_shape=(120, 320, 3)),
             'training_args': {
                 'batch_size': 32,
-                'epochs': 50,
+                'epochs': 100,
             },
         }
 
     if False:
         task = {
             'task_id': task_id,
-            'score_metric': 'val_rmse',
-            'dataset_path': 'showdown_full',
-            'final': True,
-            'model_config': RegressionModel.create(
+            'score_metric': 'loss',
+            'dataset_path': 'shinale_full',
+            'final': False,
+            'model_config': RegressionModel.create_resnet_inception_v2(
                 tmp_model_path,
-                use_adadelta=True,
                 learning_rate=0.001,
                 input_shape=(120, 320, 3)),
+            'training_args': {
+                'batch_size': 16,
+                'epochs': 100,
+                'pctl_sampling': 'uniform',
+                'pctl_thresholds': showdown_percentiles(),
+            },
+        }
+
+    if False:
+        task = {
+            'task_id': task_id,
+            'score_metric': 'loss',
+            'dataset_path': 'showdown_full',
+            'final': True,
+            'model_config': {
+                'model_uri': '/models/output/1480004259.h5',
+                'scale': 16,
+                'type': 'regression'
+            },
             'training_args': {
                 'batch_size': 32,
                 'epochs': 40,
             },
         }
+
 
     if False:
         # sharp left vs center vs sharp right
@@ -228,7 +246,7 @@ if __name__ == '__main__':
             },
         }
 
-    if True:
+    if False:
         lstm_model_config = LstmModel.create(
             tmp_model_path,
             (10, 120, 320, 3),
@@ -249,3 +267,45 @@ if __name__ == '__main__':
         }
 
     handle_task(task)
+
+
+def showdown_percentiles():
+    return np.array([
+        -9.19788539e-01,  -6.07374609e-01,  -5.13126791e-01,
+        -4.59021598e-01,  -4.13643032e-01,  -3.63028497e-01,
+        -3.17649931e-01,  -2.91469991e-01,  -2.67035365e-01,
+        -2.46091425e-01,  -2.28638127e-01,  -2.09439516e-01,
+        -1.88495561e-01,  -1.67551607e-01,  -1.50098309e-01,
+        -1.34390354e-01,  -1.22173049e-01,  -1.13446400e-01,
+        -1.04719758e-01,  -9.77384374e-02,  -9.25024524e-02,
+        -8.55211318e-02,  -7.85398185e-02,  -7.15584978e-02,
+        -6.63225129e-02,  -5.93411960e-02,  -5.41052073e-02,
+        -5.06145470e-02,  -4.53785621e-02,  -4.01425734e-02,
+        -3.66519131e-02,  -3.31612565e-02,  -2.79252678e-02,
+        -2.61799395e-02,  -2.26892810e-02,  -2.09439509e-02,
+        -1.91986226e-02,  -1.74532924e-02,  -1.57079641e-02,
+        -1.39626339e-02,  -1.22173047e-02,  -1.04719754e-02,
+        -8.72664619e-03,  -6.98131695e-03,  -5.23598772e-03,
+        -3.49065848e-03,  -3.49065848e-03,  -1.74532924e-03,
+        -1.74532924e-03,   0.00000000e+00,   1.74532924e-03,
+         1.74532924e-03,   3.49065848e-03,   3.49065848e-03,
+         5.23598772e-03,   6.98131695e-03,   8.72664619e-03,
+         1.04719754e-02,   1.22173047e-02,   1.39626339e-02,
+         1.57079641e-02,   1.74532924e-02,   1.91986226e-02,
+         2.09439509e-02,   2.26892810e-02,   2.61799395e-02,
+         2.79252678e-02,   3.31612565e-02,   3.66519131e-02,
+         4.01425734e-02,   4.53785621e-02,   5.06145470e-02,
+         5.41052073e-02,   5.93411960e-02,   6.63225129e-02,
+         7.15584978e-02,   7.85398185e-02,   8.55211318e-02,
+         9.25024524e-02,   9.77384374e-02,   1.04719758e-01,
+         1.13446400e-01,   1.22173049e-01,   1.34390354e-01,
+         1.50098309e-01,   1.67551607e-01,   1.88495561e-01,
+         2.09439516e-01,   2.28638127e-01,   2.46091425e-01,
+         2.67035365e-01,   2.91469991e-01,   3.17649931e-01,
+         3.63028497e-01,   4.13643032e-01,   4.59021598e-01,
+         5.13126791e-01,   6.07374609e-01,   9.19788539e-01,
+         2.05076194e+00])
+
+
+if __name__ == '__main__':
+    main()

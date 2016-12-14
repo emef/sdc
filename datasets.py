@@ -197,7 +197,8 @@ class InfiniteImageLoadingGenerator(object):
                  timesteps=None,
                  timestep_delta=1,
                  precomputed=None,
-                 scale=1.0):
+                 scale=1.0,
+                 concat_original=False):
         """
         @param batch_size - number of images to generate per batch
         @param indexes - array (N,) of image index IDs
@@ -226,6 +227,7 @@ class InfiniteImageLoadingGenerator(object):
         self.timestep_delta = timestep_delta
         self.precomputed = precomputed
         self.scale = scale
+        self.concat_original = concat_original
 
         self.image_shape = list(self.load_image(self.indexes[0]).shape)
 
@@ -283,7 +285,8 @@ class InfiniteImageLoadingGenerator(object):
             timesteps=self.timesteps,
             timestep_delta=self.timestep_delta,
             precomputed=self.precomputed,
-            scale=scale)
+            scale=scale,
+            concat_original=self.concat_original)
 
     def as_categorical(self, cat_thresholds):
         return InfiniteImageLoadingGenerator(
@@ -299,7 +302,8 @@ class InfiniteImageLoadingGenerator(object):
             timesteps=self.timesteps,
             timestep_delta=self.timestep_delta,
             precomputed=self.precomputed,
-            scale=self.scale)
+            scale=self.scale,
+            concat_original=self.concat_original)
 
     def with_percentile_sampling(self,
                                  pctl_sampling='uniform',
@@ -325,7 +329,8 @@ class InfiniteImageLoadingGenerator(object):
             timesteps=self.timesteps,
             timestep_delta=self.timestep_delta,
             precomputed=self.precomputed,
-            scale=self.scale)
+            scale=self.scale,
+            concat_original=self.concat_original)
 
     def with_timesteps(self, timesteps=None, timestep_delta=1):
         """
@@ -347,7 +352,8 @@ class InfiniteImageLoadingGenerator(object):
             timesteps=timesteps,
             timestep_delta=timestep_delta,
             precomputed=self.precomputed,
-            scale=self.scale)
+            scale=self.scale,
+            concat_original=self.concat_original)
 
     def precompute_transform(self, transform_model):
         """
@@ -399,7 +405,8 @@ class InfiniteImageLoadingGenerator(object):
             timesteps=self.timesteps,
             timestep_delta=self.timestep_delta,
             precomputed=precomputed,
-            scale=self.scale)
+            scale=self.scale,
+            concat_original=self.concat_original)
 
     def with_precomputed(self, precomputed):
         return InfiniteImageLoadingGenerator(
@@ -415,19 +422,37 @@ class InfiniteImageLoadingGenerator(object):
             timesteps=self.timesteps,
             timestep_delta=self.timestep_delta,
             precomputed=precomputed,
-            scale=self.scale)
+            scale=self.scale,
+            concat_original=self.concat_original)
+
+    def with_concat_original(self, concat_original):
+        return InfiniteImageLoadingGenerator(
+            batch_size=self.batch_size,
+            indexes=self.indexes,
+            labels=self.orig_labels,
+            images_base_path=self.images_base_path,
+            image_file_fmt=self.image_file_fmt,
+            shuffle_on_exhaust=self.shuffle_on_exhaust,
+            cat_thresholds=self.cat_thresholds,
+            pctl_sampling=self.pctl_sampling,
+            pctl_thresholds=self.pctl_thresholds,
+            timesteps=self.timesteps,
+            timestep_delta=self.timestep_delta,
+            precomputed=self.precomputed,
+            scale=self.scale,
+            concat_original=concat_original)
 
     def __iter__(self):
         return self
 
-    def load_image(self, index):
+    def load_image(self, index, original_only=False):
         """
         Load image at index.
 
         @param index - index of image
         @return - image data
         """
-        if self.precomputed is not None:
+        if self.precomputed is not None and not original_only:
             return self.precomputed[index]
         else:
             return load_image(
@@ -465,6 +490,8 @@ class InfiniteImageLoadingGenerator(object):
         else:
             samples = np.empty([self.batch_size] + self.image_shape)
 
+        originals = []
+
         if self.pctl_sampling == 'none':
             next_indexes = [
                 self.indexes[self.incr_index()]
@@ -491,6 +518,9 @@ class InfiniteImageLoadingGenerator(object):
             next_label_index = next_image_index - 1
             labels[i] = self.labels[next_label_index]
 
+            if self.concat_original:
+                originals.append(self.load_image(next_image_index, True))
+
             if self.timesteps is None:
                 samples[i] = self.load_image(next_image_index)
             else:
@@ -500,8 +530,13 @@ class InfiniteImageLoadingGenerator(object):
                     img = self.load_image(step_index)
                     samples[i, self.timesteps - step - 1] = img
 
-        return (samples, labels)
-
+        if self.concat_original:
+            originals_np = np.empty((self.batch_size, ) + originals[0].shape)
+            for i, orig in enumerate(originals):
+                originals_np[i] = orig
+            return ([samples, originals_np], labels)
+        else:
+            return (samples, labels)
 
 def load_image(index, images_base_path, image_file_fmt):
     """
@@ -878,15 +913,93 @@ def prepare_thresholded_dataset(src_path,
         validation_indexes)
 
 
+def combine_datasets(dataset_path1,
+                     dataset_path2,
+                     output_path,
+                     percent1,
+                     percent2,
+                     min_sequence=1000,
+                     training_percent=0.7,
+                     testing_percent=0.2,
+                     validation_percent=0.1):
+    """
+    """
+    try: shutil.rmtree(output_path)
+    except: pass
+
+    images_path = os.path.join(output_path, 'images')
+    try: os.makedirs(images_path)
+    except: pass
+
+    labels1 = np.load(os.path.join(dataset_path1, 'labels.npy'))
+    labels2 = np.load(os.path.join(dataset_path2, 'labels.npy'))
+
+    indexes1 = np.random.choice(
+        np.arange(1, len(labels1) + 1), int(percent1 * len(labels1)))
+
+    n_indexes2 = int(percent2 * len(labels2))
+    indexes2 = []
+    exclude2 = set()
+    while len(indexes2) < n_indexes2:
+        index = int(np.random.random() * (len(labels2) - min_sequence))
+        indexes2.extend(np.arange(index, index + min_sequence))
+        exclude2.update(np.arange(index, index + 100))
+
+    out_img_index = 1
+    new_labels = np.empty(len(indexes1) + len(indexes2))
+    new_exclude = set()
+
+    for index in indexes1:
+        src_path = os.path.join(dataset_path1, 'images', '%s.png.npy' % index)
+        dest_path = os.path.join(images_path, '%s.png.npy' % out_img_index)
+        subprocess.check_call(['ln', '-s', src_path, dest_path])
+        new_labels[out_img_index - 1] = labels1[index - 1]
+        out_img_index += 1
+
+    for index in indexes2:
+        src_path = os.path.join(dataset_path2, 'images', '%s.png.npy' % index)
+        dest_path = os.path.join(images_path, '%s.png.npy' % out_img_index)
+        subprocess.check_call(['ln', '-s', src_path, dest_path])
+        new_labels[out_img_index - 1] = labels2[index - 1]
+
+        if index in exclude2:
+            new_exclude.add(out_img_index)
+
+        out_img_index += 1
+
+    # exclude the first 100 images from training from each random sequence
+    new_indexes = np.array([
+        x for x in np.arange(1, len(new_labels) + 1)
+        if x not in new_exclude])
+    np.random.shuffle(new_indexes)
+    n_samples = len(new_indexes)
+    n_training = int(training_percent * n_samples)
+    n_testing = int(testing_percent * n_samples)
+    n_validation = n_samples - n_training - n_testing
+
+    training_indexes = new_indexes[:n_training]
+    testing_indexes = new_indexes[n_training:(n_training + n_testing)]
+    validation_indexes = new_indexes[-n_validation:]
+
+    # create the properly-formatted dataset directory
+    np.save(os.path.join(output_path, 'labels.npy'), new_labels)
+    np.save(
+        os.path.join(output_path, 'training_indexes.npy'),
+        training_indexes)
+    np.save(
+        os.path.join(output_path, 'testing_indexes.npy'),
+        testing_indexes)
+    np.save(
+        os.path.join(output_path, 'validation_indexes.npy'),
+        validation_indexes)
+
+
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
 
-    dataset = load_dataset('s3://sdc-matt/datasets/sdc_processed_1')
-    gen = (dataset
-        .training_generator(256)
-        .with_percentile_sampling('uniform'))
-
-    import pdb
-    pdb.set_trace()
-
-    #prepare_local_dataset("/home/ubuntu/datasets/finale", "/home/ubuntu/datasets/finale_reg")
+    combine_datasets(
+        '/datasets/showdown_full',
+        '/datasets/finale_full',
+        '/datasets/shinmicro_full',
+        1.0,
+        0.1)

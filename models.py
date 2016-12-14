@@ -7,11 +7,14 @@ import logging, os, tempfile
 from keras import backend as K
 from keras import metrics
 from keras.engine.topology import Merge
-from keras.layers import Dense, Dropout, Flatten
-from keras.layers.convolutional import Convolution2D, MaxPooling2D
+from keras.layers import (
+    Activation, BatchNormalization, Dense, Dropout, Flatten,
+    Input, SpatialDropout2D, merge)
+from keras.layers.convolutional import (
+    AveragePooling2D, Convolution2D, MaxPooling2D)
 from keras.layers.recurrent import LSTM
 from keras.layers.wrappers import TimeDistributed
-from keras.models import Sequential
+from keras.models import Model, Sequential
 from keras.models import model_from_json
 from keras.models import load_model as keras_load_model
 from keras.optimizers import RMSprop, SGD
@@ -326,11 +329,19 @@ class RegressionModel(BaseModel):
         return lambda x: self.predict_on_batch(x)[0, 0]
 
     def as_encoder(self):
-        # remove the last output layers to retain the feature maps
         deep_copy = deep_copy_model(self.model)
-        for _ in xrange(4):
-            deep_copy.pop()
-        return deep_copy_model_weights(deep_copy)
+
+        if isinstance(deep_copy, Sequential):
+            # remove the last output layers to retain the feature maps
+            while 'flatten' not in deep_copy.layers[-1].name:
+                deep_copy.pop()
+            return deep_copy_model_weights(deep_copy)
+        else:
+            deep_copy.layers.pop()
+            deep_copy.outputs = [deep_copy.layers[-1].output]
+            deep_copy.layers[-1].outbound_nodes = []
+
+        return deep_copy
 
     def output_dim(self):
         return get_output_dim(self.model)
@@ -360,33 +371,37 @@ class RegressionModel(BaseModel):
             init= "he_normal",
             activation='relu',
             border_mode='same'))
+        model.add(SpatialDropout2D(0.1))
         model.add(MaxPooling2D(pool_size=(2, 2)))
         model.add(Convolution2D(20, 5, 5,
             init= "he_normal",
             activation='relu',
             border_mode='same'))
+        model.add(SpatialDropout2D(0.1))
         model.add(MaxPooling2D(pool_size=(2, 2)))
-        model.add(Convolution2D(64, 3, 3,
+        model.add(Convolution2D(40, 3, 3,
             init= "he_normal",
             activation='relu',
             border_mode='same'))
+        model.add(SpatialDropout2D(0.1))
         model.add(MaxPooling2D(pool_size=(2, 2)))
-        model.add(Convolution2D(64, 3, 3,
+        model.add(Convolution2D(60, 3, 3,
             init= "he_normal",
             activation='relu',
             border_mode='same'))
+        model.add(SpatialDropout2D(0.1))
         model.add(MaxPooling2D(pool_size=(2, 2)))
-        model.add(Convolution2D(100, 3, 3,
+        model.add(Convolution2D(80, 2, 2,
             init= "he_normal",
             activation='relu',
             border_mode='same'))
+        model.add(SpatialDropout2D(0.1))
         model.add(MaxPooling2D(pool_size=(2, 2)))
+        model.add(Convolution2D(128, 2, 2,
+            init= "he_normal",
+            activation='relu',
+            border_mode='same'))
         model.add(Flatten())
-        model.add(Dropout(0.5))
-        model.add(Dense(
-            output_dim=256,
-            init='he_normal',
-            activation='relu'))
         model.add(Dropout(0.5))
         model.add(Dense(
             output_dim=1,
@@ -396,6 +411,150 @@ class RegressionModel(BaseModel):
         optimizer = ('adadelta' if use_adadelta
                      else SGD(lr=learning_rate, momentum=0.9))
 
+	model.compile(
+            loss='mean_squared_error',
+            optimizer=optimizer,
+            metrics=['rmse'])
+
+        # Write model to designated path
+        model.save(model_path)
+
+        # Return model_config params compatible with constructor
+        return {
+            'type': RegressionModel.TYPE,
+            'model_uri': model_path,
+            'scale': scale,
+        }
+
+    @classmethod
+    def create_resnet_inception_v1(cls,
+                                   model_path,
+                                   input_shape=(120, 320, 3),
+                                   learning_rate=0.01,
+                                   W_l2=0.0001,
+                                   scale=16):
+        """
+        """
+        img_input = Input(shape=input_shape)
+
+        # stem
+        output = conv_5x5(32, subsample=(2, 2))(img_input)
+        output = conv_5x5(64)(output)
+        output = MaxPooling2D(pool_size=(3, 3), strides=(2, 2))(output)
+        output = conv_1x1(80)(output)
+        output = conv_3x3(192)(output)
+        output = conv_3x3(256, subsample=(2, 2))(output)
+        output = MaxPooling2D(pool_size=(2, 2), strides=(2, 2))(output)
+
+        if False:
+            # inception 1
+            output = inception_layer(output, 20)
+            output = BatchNormalization(axis=3)(output)
+            output = inception_layer(output, 24)
+            output = BatchNormalization(axis=3)(output)
+        else:
+            # resnet-inception 1
+            output = inception_resnet_a()(output)
+            output = inception_resnet_a()(output)
+            output = inception_resnet_a()(output)
+
+        # reduce 1
+        output = MaxPooling2D(pool_size=(2, 2))(output)
+
+        # conv 1
+        output = conv_3x3(40)(output)
+
+        # reduce 2
+        output = MaxPooling2D(pool_size=(2, 2))(output)
+
+        # conv 2
+        output = conv_3x3(60)(output)
+        output = conv_2x2(80)(output)
+        output = conv_2x2(128)(output)
+
+        # reduce 3
+        output = AveragePooling2D(pool_size=(3, 3), strides=(2, 2))(output)
+
+        # output
+        output = Flatten()(output)
+        output = Dropout(0.2)(output)
+        output = Dense(
+            output_dim=1,
+            init='he_normal',
+            W_regularizer=l2(W_l2))(output)
+
+        optimizer = SGD(momentum=0.9, lr=0.0045)
+        optimizer = 'adadelta'
+
+        model = Model(input=img_input, output=output)
+	model.compile(
+            loss='mean_squared_error',
+            optimizer=optimizer,
+            metrics=['rmse'])
+
+        # Write model to designated path
+        model.save(model_path)
+
+        # Return model_config params compatible with constructor
+        return {
+            'type': RegressionModel.TYPE,
+            'model_uri': model_path,
+            'scale': scale,
+        }
+
+    @classmethod
+    def create_resnet_inception_v2(cls,
+                                   model_path,
+                                   input_shape=(120, 320, 3),
+                                   learning_rate=0.01,
+                                   W_l2=0.0001,
+                                   scale=16):
+        """
+        """
+        img_input = Input(shape=input_shape)
+
+        # smaller stem
+        output = conv_5x5(64, subsample=(2, 2))(img_input)
+        output = MaxPooling2D(pool_size=(3, 3), strides=(2, 2))(output)
+        output = conv_1x1(80)(output)
+        output = conv_3x3(256, subsample=(2, 2))(output)
+        output = MaxPooling2D(pool_size=(2, 2), strides=(2, 2))(output)
+
+        # resnet-inception a
+        output = inception_resnet_a()(output)
+        output = inception_resnet_a()(output)
+        output = inception_resnet_a()(output)
+
+        # reduce
+        output = MaxPooling2D(pool_size=(2, 2))(output)
+
+        # resnet-inception b
+        output = inception_resnet_b()(output)
+        output = inception_resnet_b()(output)
+        output = inception_resnet_b()(output)
+
+        # reduce
+        output = MaxPooling2D(pool_size=(2, 2))(output)
+
+        # conv 2
+        output = conv_2x2(80)(output)
+        output = conv_2x2(128)(output)
+
+        # reduce 3
+        output = AveragePooling2D(pool_size=(3, 3), strides=(2, 2))(output)
+
+        # output
+        output = Flatten()(output)
+        output = Dropout(0.2)(output)
+        output = Dense(
+            output_dim=1,
+            init='he_normal',
+            W_regularizer=l2(W_l2))(output)
+
+        optimizer = SGD(momentum=0.9, lr=0.0045)
+        optimizer = 'adadelta'
+
+        model = Model(input=img_input, output=output)
 	model.compile(
             loss='mean_squared_error',
             optimizer=optimizer,
@@ -874,6 +1033,7 @@ class TransferLstmModel(BaseModel):
         self.model = load_model_from_uri(model_config['model_uri'])
         self.timesteps = model_config['timesteps']
         self.scale = model_config.get('scale', 1.0)
+        self.concat_original = model_config.get('concat_original', False)
 
     def fit(self, dataset, training_args, callbacks=None, final=False):
         batch_size = training_args.get('batch_size', 100)
@@ -887,12 +1047,14 @@ class TransferLstmModel(BaseModel):
             else dataset.training_generator(batch_size))
 
         training_generator = (training_generator
+            .with_concat_original(self.concat_original)
             .scale_labels(self.scale)
             .precompute_transform(self.transform_model)
             .with_timesteps(timesteps=timesteps))
 
         validation_generator = (dataset
             .validation_generator(batch_size)
+            .with_concat_original(self.concat_original)
             .scale_labels(self.scale)
             .with_precomputed(training_generator.precomputed)
             .with_timesteps(timesteps=timesteps))
@@ -915,13 +1077,11 @@ class TransferLstmModel(BaseModel):
     def evaluate(self, dataset):
         testing_generator = (dataset
             .testing_generator(32)
+            .with_concat_original(self.concat_original)
             .precompute_transform(self.transform_model)
             .with_timesteps(timesteps=self.timesteps))
 
         return std_evaluate(self, testing_generator)
-
-    def predict_on_batch(self, batch):
-        return self.model.predict_on_batch(batch) / self.scale
 
     def make_stateful_predictor(self):
         encoder = self.transform_model.as_encoder()
@@ -929,22 +1089,28 @@ class TransferLstmModel(BaseModel):
 
         def predict_fn(x):
             # apply feature extractor
-            x = encoder.predict_on_batch(x)
+            x_encoded = encoder.predict_on_batch(x)
 
             # initial fill of timesteps
             if not len(steps):
                 for _ in xrange(self.timesteps):
-                    steps.append(x)
+                    steps.append(x_encoded)
 
             # put most recent features at end
             steps.popleft()
-            steps.append(x)
+            steps.append(x_encoded)
 
-            timestepped_x = np.empty((1, self.timesteps) + x.shape[1:])
+            timestepped_x = np.empty((1, self.timesteps) + x_encoded.shape[1:])
             for i, img in enumerate(steps):
                 timestepped_x[0, i] = img
 
-            return self.model.predict_on_batch(timestepped_x)[0, 0] / self.scale
+            if self.concat_original:
+                original_x = x.reshape((1, 120, 320, 3))
+                batch = [timestepped_x, original_x]
+            else:
+                batch = timestepped_x
+
+            return self.model.predict_on_batch(batch)[0, 0] / self.scale
 
         return predict_fn
 
@@ -991,27 +1157,13 @@ class TransferLstmModel(BaseModel):
 
         model = Sequential()
         model.add(LSTM(
-            64,
+            256,
             input_shape=(timesteps, input_dim),
-            dropout_W=0.2,
-            dropout_U=0.2,
+            dropout_W=0.1,
+            dropout_U=0.1,
             return_sequences=True))
-        model.add(LSTM(
-            64,
-            dropout_W=0.2,
-            dropout_U=0.2,
-            return_sequences=True))
-        model.add(LSTM(
-            64,
-            dropout_W=0.2,
-            dropout_U=0.2))
-        model.add(Dropout(0.2))
-        model.add(Dense(
-            output_dim=256,
-            init='he_normal',
-            activation='relu',
-            W_regularizer=l2(W_l2)))
-        model.add(Dropout(0.2))
+        model.add(Flatten())
+        model.add(Dense(256, activation='relu'))
         model.add(Dense(
             output_dim=1,
             init='he_normal',
@@ -1031,7 +1183,205 @@ class TransferLstmModel(BaseModel):
             'model_uri': model_path,
             'transform_model_config': transform_model_config,
             'scale': scale,
+            'concat_original': False,
         }
+
+    @classmethod
+    def create_cnn(cls,
+                   model_path,
+                   transform_model_config,
+                   input_shape,
+                   batch_size=16,
+                   timesteps=3,
+                   W_l2=0.001,
+                   scale=16,
+                   metrics=None):
+        """
+        Creates a TransferLstmModel
+
+        @param model_uri - s3 uri to save the model
+        @param input_shape - timestepped shape (timesteps, feature dims)
+        @param transform_model_config - transform model config
+        @param input_shape - (batch_size, feature dims..)
+        @param timesteps - timesteps inclusive of the current frame
+                         (10 - current frame + 9 previous frames)
+        @param W_l2 - l2 regularization weight
+        @param metrics - metrics to track - (rmse, mse...)
+        """
+        metrics = metrics or ['rmse']
+
+        transform_model = load_from_config(transform_model_config)
+        input_dim = get_output_dim(transform_model.as_encoder())
+
+        lstm = Sequential()
+        lstm.add(LSTM(
+            256,
+            input_shape=(timesteps, input_dim),
+            dropout_W=0.1,
+            dropout_U=0.1,
+            return_sequences=True))
+        lstm.add(Flatten())
+        lstm.add(Dense(256, activation='relu'))
+
+        cnn = Sequential()
+        cnn.add(Convolution2D(
+            24, 5, 5,
+            input_shape=input_shape,
+            subsample=(2, 2),
+            activation='relu',
+            init='he_normal',
+            border_mode='valid'))
+        cnn.add(Convolution2D(
+            128, 3, 3,
+            subsample=(2, 2),
+            activation='relu',
+            init='he_normal',
+            border_mode='valid'))
+        cnn.add(Convolution2D(
+            256, 2, 2,
+            subsample=(2, 2),
+            activation='relu',
+            init='he_normal',
+            border_mode='valid'))
+        cnn.add(Flatten())
+        cnn.add(Dense(256, activation='relu'))
+
+        merged = Sequential()
+        merged.add(Merge([lstm, cnn], mode='concat'))
+        merged.add(Dense(
+            output_dim=1,
+            init='he_normal',
+            W_regularizer=l2(W_l2)))
+
+        merged.compile(
+            loss='mean_squared_error',
+            optimizer='adadelta',
+            metrics=metrics)
+
+        # Write model to designated path
+        merged.save(model_path)
+
+        return {
+            'type': TransferLstmModel.TYPE,
+            'timesteps': timesteps,
+            'model_uri': model_path,
+            'transform_model_config': transform_model_config,
+            'scale': scale,
+            'concat_original': True,
+        }
+
+
+
+def inception_layer(model, tower_size):
+    """
+    """
+    tower_1 = conv_1x1(tower_size, normal=False)(model)
+
+    tower_2 = conv_1x1(tower_size, normal=False)(model)
+    tower_2 = conv_3x3(tower_size, normal=False)(tower_2)
+
+    tower_3 = conv_1x1(tower_size, normal=False)(model)
+    tower_3 = conv_5x5(tower_size, normal=False)(tower_3)
+
+    tower_4 = MaxPooling2D(
+        pool_size=(3, 3),
+        strides=(1, 1),
+        border_mode='same')(model)
+    tower_4 = conv_1x1(tower_size, normal=False)(tower_4)
+
+    return merge(
+        [tower_1, tower_2, tower_3, tower_4],
+        mode='concat',
+        concat_axis=3)
+
+
+def inception_resnet_a():
+    def fn(input):
+        norm = BatchNormalization(axis=3)(input)
+        relu = Activation('relu')(input)
+
+        tower_1 = no_relu_conv_mxn(32, 1, 1)(relu)
+
+        tower_2 = no_relu_conv_mxn(32, 1, 1)(relu)
+        tower_2 = no_relu_conv_mxn(32, 3, 3)(tower_2)
+
+        tower_3 = no_relu_conv_mxn(32, 1, 1)(relu)
+        tower_3 = no_relu_conv_mxn(32, 3, 3)(tower_3)
+        tower_3 = no_relu_conv_mxn(32, 3, 3)(tower_3)
+
+        towers = merge(
+            [tower_1, tower_2, tower_3],
+            mode='concat',
+            concat_axis=3)
+
+        linear_conv = no_relu_conv_mxn(256, 1, 1)(towers)
+
+        return merge([relu, linear_conv], mode='sum')
+
+    return fn
+
+def inception_resnet_b():
+    def fn(input):
+        norm = BatchNormalization(axis=3)(input)
+        relu = Activation('relu')(input)
+
+        tower_1 = no_relu_conv_mxn(128, 1, 1)(relu)
+
+        tower_2 = no_relu_conv_mxn(128, 1, 1)(relu)
+        tower_2 = no_relu_conv_mxn(128, 1, 5)(tower_2)
+        tower_2 = no_relu_conv_mxn(128, 5, 1)(tower_2)
+
+        towers = merge(
+            [tower_1, tower_2],
+            mode='concat',
+            concat_axis=3)
+
+        linear_conv = no_relu_conv_mxn(256, 1, 1)(towers)
+
+        return merge([relu, linear_conv], mode='sum')
+
+    return fn
+
+
+def conv_5x5(n_filters, subsample=(1, 1), normal=True):
+    return conv_mxn(n_filters, 5, 5, subsample, normal)
+
+
+def conv_3x3(n_filters, subsample=(1, 1), normal=True):
+    return conv_mxn(n_filters, 3, 3, subsample, normal)
+
+
+def conv_2x2(n_filters, subsample=(1, 1), normal=True):
+    return conv_mxn(n_filters, 2, 2, subsample, normal)
+
+
+def conv_1x1(n_filters, subsample=(1, 1), normal=True):
+    return conv_mxn(n_filters, 1, 1, subsample, normal)
+
+
+def conv_mxn(n_filters, m, n, subsample=(1, 1), normal=True):
+    def fn(input):
+        conv = Convolution2D(
+            n_filters, m, n,
+            activation='relu',
+            border_mode='same')(input)
+
+        if normal:
+            conv = BatchNormalization(axis=3)(conv)
+
+        return conv
+
+    return fn
+
+
+def no_relu_conv_mxn(n_filters, m, n):
+    def f(input):
+        return Convolution2D(
+            n_filters, m, n,
+            init='he_normal',
+            border_mode='same')(input)
+
+    return f
 
 
 MODEL_CLASS_BY_TYPE = {
@@ -1129,8 +1479,8 @@ def deep_copy_model_weights(model):
         loaded_model.load_weights(tmp_path_weights)
         return loaded_model
     finally:
-        os.remove(tmp_path_json)
-        os.remove(tmp_path_weights)
+        print(tmp_path_json)
+        print(tmp_path_weights)
 
 def get_output_dim(model):
     """

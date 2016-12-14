@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import tempfile
 import time
+from collections import deque
 from math import cos, sin, pi
 
 import cv2
@@ -26,11 +27,11 @@ def main():
         'scale': 16.0,
         'type': 'transfer-lstm',
         'transform_model_config': {
-            'model_uri': '/models/output/1479836278.h5',
+            'model_uri': '/models/output/1480050604.h5',
             'scale': 16,
-            'type': 'regression',
+            'type': 'regression'
         },
-        'model_uri': '/models/output/1479841163.h5',
+        'model_uri': '/models/output/1480098607.h5'
     }
 
     ts = int(time.time())
@@ -87,6 +88,8 @@ def generate_submission(model_config,
                 submission_path)
         else:
             predictor = model.make_stateful_predictor()
+            predictor = smoothing_predictor(predictor)
+
             generate_submission_csv(
                 predictor,
                 images_path,
@@ -228,6 +231,52 @@ def point_on_circle(center, radius, angle):
     return int(x), int(y)
 
 
+def smoothing_predictor(predictor,
+                        smoothing=True,
+                        smoothing_steps=3,
+                        interpolation_weight=0.5,
+                        max_abs_delta=None):
+    if smoothing:
+        assert smoothing_steps >= 2
+        X = np.linspace(0, 1, smoothing_steps)
+        x1 = 1 + X[1] - X[0]
+        prev = deque()
+
+    def predict_fn(x):
+        p = predictor(x)
+
+        if not smoothing:
+            return p
+
+        if len(prev) == smoothing_steps:
+            m, b = np.polyfit(X, prev, 1)
+            if abs(m) > 0.01:
+                m *= 1.3
+            p_interp = b + m * x1
+            p_weighted = ((1 - interpolation_weight) * p
+                          + interpolation_weight * p_interp)
+            prev.popleft()
+        else:
+            p_weighted = p
+
+        prev.append(p)
+
+        if max_abs_delta is not None and len(prev) >= 2:
+            p_last = prev[-2]
+            delta = np.clip(
+                p_weighted - p_last,
+                -max_abs_delta,
+                max_abs_delta)
+
+            p_final = p_last + delta
+        else:
+            p_final = p_weighted
+
+        return p_final
+
+    return predict_fn
+
+
 def load_test_image(src):
     cv_image = cv2.imread(src)
     cv_image = cv2.resize(cv_image, (320, 240))
@@ -237,9 +286,11 @@ def load_test_image(src):
     cv_image = ((cv_image-(255.0/2))/255.0)
     return cv_image
 
+
 def safe_makedirs(path):
     try: os.makedirs(path)
     except: pass
+
 
 if __name__ == '__main__':
     main()
